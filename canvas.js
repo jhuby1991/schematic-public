@@ -1,9 +1,10 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.11';
-import { doAutosave } from './storage.js?v=1.11';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.11';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.12';
+import { doAutosave } from './storage.js?v=1.12';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.12';
+import { showToast } from './utils.js?v=1.12';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -214,7 +215,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.11').then(mod => {
+                import('./connections.js?v=1.12').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -236,19 +237,45 @@ export function setupCanvas(app) {
     }
 
     // --- Orange Print Area (pdf-page-guide) ---
+    /* ------------------------------------------------------------------
+       Printable area
+       One source of truth for "what actually fits on the page". Used both
+       to draw the on-screen page guide and to fit the drawing at print time.
+       ------------------------------------------------------------------ */
+    const PRINT_GEOMETRY = {
+        pageWidthMm: 297,          // A4 landscape
+        pageHeightMm: 210,
+        marginMm: 10,
+        infoBlockMm: 38.4,         // reserved for the title block + notes
+        dpi: 96
+    };
+
+    function getPrintAreaPx() {
+        const { pageWidthMm, pageHeightMm, marginMm, infoBlockMm, dpi } = PRINT_GEOMETRY;
+        const mmToPx = (1 / 25.4) * dpi;
+        return {
+            width:  (pageWidthMm  - 2 * marginMm) * mmToPx,
+            height: (pageHeightMm - 2 * marginMm - infoBlockMm) * mmToPx
+        };
+    }
+
     function updatePdfPageGuide() {
-        if (!pdfPageGuide) return;
-        const A4_LANDSCAPE_WIDTH_MM = 297;
-        const A4_LANDSCAPE_HEIGHT_MM = 210;
-        const MARGIN_MM = 10;
-        const INFO_BLOCK_RESERVED_MM = 38.4;
-        const DPI = 96;
-        const MM_TO_INCH = 1 / 25.4;
-        const guideContentWidthPx = (A4_LANDSCAPE_WIDTH_MM - 2 * MARGIN_MM) * MM_TO_INCH * DPI;
-        const guideContentHeightPx = (A4_LANDSCAPE_HEIGHT_MM - 2 * MARGIN_MM - INFO_BLOCK_RESERVED_MM) * MM_TO_INCH * DPI;
-        pdfPageGuide.style.width = `${guideContentWidthPx}px`;
-        pdfPageGuide.style.height = `${guideContentHeightPx}px`;
-        pdfPageGuide.style.display = 'block';
+        const area = getPrintAreaPx();
+        const canvasEl = document.getElementById('drawing-canvas');
+
+        if (pdfPageGuide) {
+            pdfPageGuide.style.width = `${area.width}px`;
+            pdfPageGuide.style.height = `${area.height}px`;
+            pdfPageGuide.style.display = 'block';
+        }
+
+        // Keep the canvas the same size as the page. The canvas is
+        // width/height: max-content, so it still grows if a drawing (or a
+        // loaded file from before this change) extends past the page edge.
+        if (canvasEl) {
+            canvasEl.style.minWidth = `${area.width}px`;
+            canvasEl.style.minHeight = `${area.height}px`;
+        }
     }
     updatePdfPageGuide();
     window.addEventListener('resize', updatePdfPageGuide);
@@ -310,12 +337,122 @@ export function setupCanvas(app) {
         }
     }
 
+    /* ------------------------------------------------------------------
+       Fit the drawing to the page at print time.
+
+       The print stylesheet already applies `transform: var(--print-transform)`
+       to both #drawing-canvas and #svg-overlay; this fills that variable in.
+       Without it the canvas printed at 1:1 and anything past the page guide
+       was lost off the edge of the sheet.
+       ------------------------------------------------------------------ */
+    const PRINT_MIN_SCALE = 0.5;   // below this the drawing is too small to read
+    const PRINT_PADDING_PX = 8;
+    let lastPrintScale = 1;
+
+    function getCanvasScale() {
+        const canvasEl = document.getElementById('drawing-canvas');
+        if (!canvasEl) return 1;
+        const t = getComputedStyle(canvasEl).transform;
+        if (!t || t === 'none') return 1;
+        const m = t.match(/matrix\(([^)]+)\)/);
+        if (!m) return 1;
+        const a = parseFloat(m[1].split(',')[0]);
+        return (Number.isFinite(a) && a !== 0) ? a : 1;
+    }
+
+    /** Bounding box of everything drawn, in untransformed canvas pixels. */
+    function getContentBoundsPx() {
+        const canvasEl = document.getElementById('drawing-canvas');
+        if (!canvasEl) return null;
+        const canvasRect = canvasEl.getBoundingClientRect();
+        const scale = getCanvasScale();
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, found = false;
+        const include = (l, t, r, b) => {
+            if (![l, t, r, b].every(Number.isFinite)) return;
+            found = true;
+            if (l < minX) minX = l;
+            if (t < minY) minY = t;
+            if (r > maxX) maxX = r;
+            if (b > maxY) maxY = b;
+        };
+
+        // Components, text boxes and shapes (rect includes overflowing labels)
+        canvasEl.querySelectorAll('.canvas-item').forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) return;
+            include(
+                (r.left   - canvasRect.left) / scale,
+                (r.top    - canvasRect.top)  / scale,
+                (r.right  - canvasRect.left) / scale,
+                (r.bottom - canvasRect.top)  / scale
+            );
+        });
+
+        // Connection lines live in canvas coordinates already
+        const overlay = document.getElementById('svg-overlay');
+        if (overlay) {
+            overlay.querySelectorAll('line').forEach(ln => {
+                if (ln.classList.contains('temp-line')) return;
+                const x1 = parseFloat(ln.getAttribute('x1')), y1 = parseFloat(ln.getAttribute('y1'));
+                const x2 = parseFloat(ln.getAttribute('x2')), y2 = parseFloat(ln.getAttribute('y2'));
+                include(Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2));
+            });
+        }
+
+        if (!found) return null;
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    }
+
+    function applyPrintFit() {
+        const root = document.documentElement;
+        const bounds = getContentBoundsPx();
+        lastPrintScale = 1;
+
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+            root.style.removeProperty('--print-transform');
+            return;
+        }
+
+        const area = getPrintAreaPx();
+        const targetW = area.width  - PRINT_PADDING_PX * 2;
+        const targetH = area.height - PRINT_PADDING_PX * 2;
+
+        // Shrink to fit, but never enlarge: a two-component drawing should not
+        // print blown up across the whole sheet.
+        let scale = Math.min(targetW / bounds.width, targetH / bounds.height, 1);
+        if (scale < PRINT_MIN_SCALE) scale = PRINT_MIN_SCALE;
+        lastPrintScale = scale;
+
+        // Centre whatever room is left over.
+        const offsetX = PRINT_PADDING_PX + Math.max(0, (targetW - bounds.width  * scale) / 2);
+        const offsetY = PRINT_PADDING_PX + Math.max(0, (targetH - bounds.height * scale) / 2);
+
+        const tx = offsetX - bounds.x * scale;
+        const ty = offsetY - bounds.y * scale;
+        root.style.setProperty('--print-transform', `translate(${tx}px, ${ty}px) scale(${scale})`);
+    }
+
+    function clearPrintFit() {
+        document.documentElement.style.removeProperty('--print-transform');
+    }
+
     window.addEventListener('beforeprint', () => {
         renderPrintInfoBlock();
         renderPrintConnectorLegend();
+        applyPrintFit();
     });
     window.addEventListener('afterprint', () => {
         cleanupPrintInfoBlock();
+        clearPrintFit();
+        if (lastPrintScale <= PRINT_MIN_SCALE) {
+            showToast(
+                'Your drawing is wider than one page, so it was printed at the smallest readable size. Moving components closer together will print larger.',
+                'warning',
+                7000
+            );
+        }
+        lastPrintScale = 1;
     });
 
     // --- Drag-and-drop from palette to canvas ---
@@ -1170,7 +1307,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.11').then(mod => {
+                    import('./connections.js?v=1.12').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1392,7 +1529,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.11').then(mod => {
+        import('./connections.js?v=1.12').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1469,7 +1606,7 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.11').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
         // Hide text box properties panel when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -1480,7 +1617,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.11').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1491,7 +1628,7 @@ export function setupCanvas(app) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => obj.remove());
             selectedObjects.clear();
-            import('./connections.js?v=1.11').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.12').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1564,7 +1701,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.11').then(mod => {
+            import('./connections.js?v=1.12').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -1729,7 +1866,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (data.connections && svgOverlay) {
-            const mod = await import('./connections.js?v=1.11');
+            const mod = await import('./connections.js?v=1.12');
             mod.setConnections(data.connections);
             mod.renderConnections();
         }
@@ -1861,7 +1998,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.11').then(mod => {
+                    import('./connections.js?v=1.12').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -1883,7 +2020,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.11').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
             }
         });
     }
@@ -1895,8 +2032,8 @@ export function setupCanvas(app) {
         // Clear previous grid
         gridSvg.innerHTML = '';
         // Set SVG size to match canvas
-        const width = drawingCanvas.offsetWidth;
-        const height = drawingCanvas.offsetHeight;
+        const width = Math.max(drawingCanvas.offsetWidth, drawingCanvas.scrollWidth);
+        const height = Math.max(drawingCanvas.offsetHeight, drawingCanvas.scrollHeight);
         gridSvg.setAttribute('width', width);
         gridSvg.setAttribute('height', height);
         gridSvg.style.position = 'absolute';
@@ -1930,6 +2067,7 @@ export function setupCanvas(app) {
 
     // Call renderGrid on load, zoom, pan, and resize
     window.addEventListener('resize', renderGrid);
+    window._renderGrid = renderGrid;
     renderGrid();
 
     // Utility to get mouse position in canvas coordinates, accounting for zoom and pan
@@ -2159,6 +2297,9 @@ export async function loadSchematicData(data) {
         return result;
     }
     console.debug('[loadSchematicData] window.app._realLoadSchematicData not found');
+
+    // A loaded drawing may extend past the page, growing the canvas.
+    if (typeof window._renderGrid === 'function') window._renderGrid();
 }
 
 // At the very end of the file, add:

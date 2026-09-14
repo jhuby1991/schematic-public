@@ -275,8 +275,11 @@
             position: absolute;
             top: 0;
             left: 0;
-            min-width: 2000px;
-            min-height: 1200px;
+            /* Sized to the printable page area by updatePdfPageGuide().
+               width/height are max-content, so the canvas still grows if a
+               drawing extends past the page edge. */
+            min-width: 1047px;
+            min-height: 573px;
             width: max-content;
             height: max-content;
             background: #fff;
@@ -2002,6 +2005,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.11"></script>
+    <script type="module" src="main.js?v=1.12"></script>
 </body>
 </html>
