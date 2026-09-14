@@ -17,6 +17,19 @@ project details, and print to an A4 landscape PDF with a title block and legend.
 - `firebase-config.js` removed
 - `index.html` now redirects straight to the tool at `custom.html`
 
+## Updating the tool
+
+JavaScript modules are cached by the browser, so **bump the version query string
+whenever you change a `.js` file** — otherwise returning visitors can end up
+running new HTML against stale JavaScript.
+
+The version appears in two places:
+
+- `custom.html` — `<script type="module" src="main.js?v=1.10">`
+- every relative import inside the `.js` files — `from './ui.js?v=1.10'`
+
+Bump them together (a find-and-replace on `?v=1.10` is enough).
+
 ## Running locally
 
 It's a static site — no build step. Serve the folder over HTTP, e.g.
