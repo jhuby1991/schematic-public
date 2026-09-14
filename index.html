@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAKO Schematic Tool - Login</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: Avenir, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #ffffff;
+            color: #222;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            padding: 48px 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 24px;
+        }
+        .login-title {
+            font-size: 2rem;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .login-subtitle {
+            color: #7f8c8d;
+            margin-bottom: 32px;
+            font-size: 1.1rem;
+        }
+        .google-btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 16px 24px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            transition: background 0.2s;
+            margin-bottom: 16px;
+        }
+        .google-btn:hover {
+            background: #3367d6;
+        }
+        .google-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .google-icon {
+            width: 20px;
+            height: 20px;
+        }
+        .domain-notice {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 16px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            margin-top: 16px;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .user-info {
+            display: none;
+            margin-top: 24px;
+            padding: 16px;
+            background: #e8f5e8;
+            border-radius: 8px;
+            border: 1px solid #c3e6c3;
+        }
+        .user-email {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .logout-btn:hover {
+            background: #c82333;
+            }
+        .access-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 12px;
+            transition: background 0.2s;
+            }
+        .access-btn:hover {
+            background: #218838;
+            color: white;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <img src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="RAKO Logo" class="logo">
+        <h1 class="login-title">Schematic Tool</h1>
+        <p class="login-subtitle">Sign in to access the RAKO schematic drawing tool</p>
+        
+        <!-- Login Section -->
+        <div id="loginSection">
+            <button id="googleSignInBtn" class="google-btn">
+                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" class="google-icon">
+                Sign in with Google
+            </button>
+            
+            <div class="domain-notice">
+                <i class="bi bi-info-circle"></i>
+                <strong>Domain Restriction:</strong> Only @rakocontrols.com email addresses are allowed to access this tool.
+            </div>
+        </div>
+
+        <!-- User Info Section (shown after login) -->
+        <div id="userSection" class="user-info">
+            <div class="user-email" id="userEmail"></div>
+            <button id="logoutBtn" class="logout-btn">Sign Out</button>
+            <a href="custom.html" id="accessBtn" class="access-btn">
+                <i class="bi bi-lightning-charge"></i> Access Schematic Tool
+            </a>
+        </div>
+        
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message"></div>
+        
+        <!-- Loading Spinner -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Signing in...</p>
+        </div>
+    </div>
+
+    <!-- Firebase Configuration -->
+    <script src="firebase-config.js"></script>
+    
+    <script>
+    function waitForAuthAndRun(callback) {
+      if (window.auth) {
+        callback();
+      } else {
+        setTimeout(() => waitForAuthAndRun(callback), 50);
+      }
+    }
+    
+    waitForAuthAndRun(function() {
+      // Check if user is already signed in
+      auth.onAuthStateChanged(function(user) {
+          if (user) {
+              // User is signed in
+              const email = user.email;
+              if (email && email.endsWith('@rakocontrols.com')) {
+                  // Valid domain - show user section
+                  document.getElementById('loginSection').style.display = 'none';
+                  document.getElementById('userSection').style.display = 'block';
+                  document.getElementById('userEmail').textContent = email;
+                  document.getElementById('errorMessage').style.display = 'none';
+              } else {
+                  // Invalid domain - sign out and show error
+                  auth.signOut();
+                  showError('Only @rakocontrols.com email addresses are allowed to access this tool.');
+              }
+          } else {
+              // User is signed out
+              document.getElementById('loginSection').style.display = 'block';
+              document.getElementById('userSection').style.display = 'none';
+              document.getElementById('errorMessage').style.display = 'none';
+          }
+      });
+  
+      // Google Sign In
+      document.getElementById('googleSignInBtn').addEventListener('click', function() {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          showLoading(true);
+          
+          auth.signInWithPopup(provider).then(function(result) {
+              const user = result.user;
+              const email = user.email;
+              
+              if (email && email.endsWith('@rakocontrols.com')) {
+                  // Valid domain - success
+                  showLoading(false);
+              } else {
+                  // Invalid domain - sign out and show error
+                  auth.signOut();
+                  showLoading(false);
+                  showError('Access denied. Only @rakocontrols.com email addresses are allowed.');
+              }
+          }).catch(function(error) {
+              showLoading(false);
+              showError('Sign in failed: ' + error.message);
+          });
+      });
+  
+      // Sign Out
+      document.getElementById('logoutBtn').addEventListener('click', function() {
+          auth.signOut();
+      });
+  
+      function showError(message) {
+          const errorDiv = document.getElementById('errorMessage');
+          errorDiv.textContent = message;
+          errorDiv.style.display = 'block';
+      }
+  
+      function showLoading(show) {
+          const loadingDiv = document.getElementById('loading');
+          const signInBtn = document.getElementById('googleSignInBtn');
+          
+          if (show) {
+              loadingDiv.style.display = 'block';
+              signInBtn.disabled = true;
+          } else {
+              loadingDiv.style.display = 'none';
+              signInBtn.disabled = false;
+          }
+      }
+    });
+    </script>
+</body>
+</html>
