@@ -5,7 +5,7 @@
 import { setupUI } from './ui.js';
 import { setupCanvas } from './canvas.js';
 import { setupPalette } from './palette.js';
-import { setupStorage, maybeRestoreAutosave } from './storage.js';
+import { setupStorage } from './storage.js';
 import { showNotification } from './utils.js';
 import { setupZoomPan } from './zoom.js';
 

@@ -2,6 +2,7 @@
 // Handles local save/load logic.
 
 import { getSchematicData, loadSchematicData } from './canvas.js';
+import { showToast, showActionBar } from './utils.js';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
@@ -17,13 +18,6 @@ export function doAutosave(app) {
 }
 
 export function setupStorage(app) {
-    // TODO: Migrate all local save/load, file save/load, and cloud storage (Firebase) logic here from custom.html
-    // This includes:
-    // - LocalStorage save/load
-    // - File save/load
-    // - Cloud storage (Firebase) logic
-    // - Any storage-specific helpers
-
     // --- DOM references ---
     const saveSchematicBtn = document.getElementById('saveSchematicBtn');
     const loadSchematicBtn = document.getElementById('loadSchematicBtn');
@@ -40,9 +34,9 @@ export function setupStorage(app) {
             try {
                 const data = getSchematicData();
                 localStorage.setItem('schematicToolData', JSON.stringify(data));
-                alert('Schematic saved successfully to Quick Save!');
+                showToast('Drawing saved to this browser', 'success');
             } catch (e) {
-                alert('Error saving schematic.');
+                showToast("Couldn't save \u2014 your browser storage may be full or blocked", 'error', 4000);
             }
         });
     }
@@ -52,12 +46,12 @@ export function setupStorage(app) {
                 const data = localStorage.getItem('schematicToolData');
                 if (data) {
                     loadSchematicData(JSON.parse(data));
-                    alert('Schematic loaded successfully from Quick Save!');
+                    showToast('Drawing restored', 'success');
                 } else {
-                    alert('No Quick Saved schematic found.');
+                    showToast('No saved drawing found in this browser', 'info');
                 }
             } catch (e) {
-                alert('Error loading schematic.');
+                showToast("Couldn't open that saved drawing \u2014 it may be damaged", 'error', 4000);
             }
         });
     }
@@ -79,9 +73,10 @@ export function setupStorage(app) {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+                showToast(`Saved as ${a.download}`, 'success');
             } catch (e) {
                 console.error('Error saving schematic to file:', e);
-                alert('Error saving schematic to file.');
+                showToast("Couldn't save the file. Please try again.", 'error', 4000);
             }
         });
     }
@@ -95,9 +90,11 @@ export function setupStorage(app) {
                 try {
                     const data = JSON.parse(e.target.result);
                     loadSchematicData(data);
-                    alert('Schematic loaded successfully from file!');
+                    showToast(`Opened ${file.name}`, 'success');
                 } catch (err) {
-                    alert('Error loading schematic from file.');
+                    showToast("That file isn't a saved schematic, or it's damaged", 'error', 4500);
+                } finally {
+                    event.target.value = '';
                 }
             };
             reader.readAsText(file);
@@ -118,52 +115,56 @@ export function setupStorage(app) {
         });
     }
 
-    // --- Autosave ---
-    try {
-        const autosaveRaw = localStorage.getItem(AUTOSAVE_KEY);
-        if (autosaveRaw) {
-            const autosave = JSON.parse(autosaveRaw);
-            const age = Date.now() - (autosave.timestamp || 0);
-            const minutesAgo = Math.floor(age / (1000 * 60));
-            if (age < 60 * 60 * 1000) { // less than 1 hour old
-                const msg = `Found auto-saved schematic from ${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago.\n\nWould you like to recover your work?\n\nClick OK to recover, or Cancel to start over.`;
-                if (confirm(msg)) {
-                    loadSchematicData(autosave.data).then(() => setTimeout(() => doAutosave(app), 100));
-                    localStorage.removeItem(AUTOSAVE_KEY);
-                    if (app.showNotification) app.showNotification('Autosave restored');
-                } else {
-                    localStorage.removeItem(AUTOSAVE_KEY);
-                }
-            } else {
-                localStorage.removeItem(AUTOSAVE_KEY);
-            }
-        }
-    } catch (e) {
-        // Ignore autosave errors
-    }
+    // --- Autosave recovery (non-blocking) ---
+    offerAutosaveRecovery(app);
 }
 
-export function maybeRestoreAutosave(app) {
+/**
+ * If a recent autosave exists, offer to restore it via an in-app bar.
+ * Deliberately non-blocking so the tool is usable immediately on load.
+ */
+export function offerAutosaveRecovery(app) {
+    let autosave;
     try {
-        const autosaveRaw = localStorage.getItem(AUTOSAVE_KEY);
-        if (autosaveRaw) {
-            const autosave = JSON.parse(autosaveRaw);
-            const age = Date.now() - (autosave.timestamp || 0);
-            const minutesAgo = Math.floor(age / (1000 * 60));
-            if (age < 60 * 60 * 1000) { // less than 1 hour old
-                const msg = `Found auto-saved schematic from ${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago.\n\nWould you like to recover your work?\n\nClick OK to recover, or Cancel to start over.`;
-                if (confirm(msg)) {
-                    loadSchematicData(autosave.data).then(() => setTimeout(() => doAutosave(app), 100));
-                    localStorage.removeItem(AUTOSAVE_KEY);
-                    if (app.showNotification) app.showNotification('Autosave restored');
-                } else {
-                    localStorage.removeItem(AUTOSAVE_KEY);
-                }
-            } else {
-                localStorage.removeItem(AUTOSAVE_KEY);
-            }
-        }
+        const raw = localStorage.getItem(AUTOSAVE_KEY);
+        if (!raw) return;
+        autosave = JSON.parse(raw);
     } catch (e) {
-        // Ignore autosave errors
+        return;
     }
-} 
+
+    const age = Date.now() - (autosave.timestamp || 0);
+    if (age >= 60 * 60 * 1000) {              // older than an hour: discard quietly
+        try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {}
+        return;
+    }
+
+    const minutesAgo = Math.floor(age / 60000);
+    const when = minutesAgo < 1
+        ? 'less than a minute ago'
+        : `${minutesAgo} minute${minutesAgo === 1 ? '' : 's'} ago`;
+
+    showActionBar({
+        message: `You have an unsaved drawing from ${when}.`,
+        actions: [
+            {
+                label: 'Discard',
+                onClick: () => {
+                    try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {}
+                }
+            },
+            {
+                label: 'Restore it',
+                variant: 'btn-primary',
+                onClick: () => {
+                    Promise.resolve(loadSchematicData(autosave.data))
+                        .then(() => {
+                            setTimeout(() => doAutosave(app), 100);
+                            showToast('Drawing restored', 'success');
+                        })
+                        .catch(() => showToast("Couldn't restore that drawing", 'error', 4000));
+                }
+            }
+        ]
+    });
+}
