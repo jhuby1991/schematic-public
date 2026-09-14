@@ -7,18 +7,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        /* Authentication overlay styles */
-        .auth-overlay {
-            display: none;
-        }
-        .auth-spinner {
-            display: none;
-        }
-        /* Hide main content until authenticated */
+        /* Public build: no authentication gate */
         .main-content, .toolbar {
-            display: none;
-        }
-        .authenticated .main-content, .authenticated .toolbar {
             display: flex;
         }
         body {
@@ -1303,64 +1293,8 @@
             margin-top: 16px !important;
         }
     </style>
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js"></script>
 </head>
 <body>
-    <!-- Authentication Overlay -->
-    <div id="authOverlay" class="auth-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 9999; display: flex; align-items: center; justify-content: center; flex-direction: column;">
-        <div class="spinner-border text-primary mb-3" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-        <div id="authMessage" style="font-size: 1.1rem; color: #666;">Checking authentication...</div>
-    </div>
-
-    <script>
-    // Authentication check
-    function checkAuth() {
-        const authOverlay = document.getElementById('authOverlay');
-        const authMessage = document.getElementById('authMessage');
-        
-        return new Promise((resolve, reject) => {
-            if (!window.auth) {
-                window.location.href = 'index.html';
-                return;
-            }
-
-            window.auth.onAuthStateChanged((user) => {
-                if (user && user.email && user.email.endsWith('@rakocontrols.com')) {
-                    // Valid user, hide overlay and show content
-                    authOverlay.style.display = 'none';
-                    document.body.classList.add('authenticated');
-                    resolve();
-                } else {
-                    // Not authenticated or wrong domain, redirect to login
-                    authMessage.textContent = 'Access denied. Redirecting to login...';
-                    setTimeout(() => {
-                        window.location.href = 'index.html';
-                    }, 1500);
-                    reject();
-                }
-            });
-        });
-    }
-
-    // Wait for auth to be available then check it
-    function waitForAuthAndCheck() {
-        if (window.auth) {
-            checkAuth();
-        } else {
-            setTimeout(waitForAuthAndCheck, 50);
-        }
-    }
-
-    // Start auth check when page loads
-    waitForAuthAndCheck();
-    </script>
-
     <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center;">
             <button id="drawGridLineBtn" class="btn btn-primary btn-sm" style="margin-right:5px;">Draw Line</button>
@@ -1799,41 +1733,5 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="main.js"></script>
-    <script>
-        // Initialize Firebase if not already initialized
-        if (!firebase.apps?.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        // Check authentication before showing content
-        auth.onAuthStateChanged(function(user) {
-            const authOverlay = document.getElementById('authOverlay');
-            if (user) {
-                // User is signed in
-                const email = user.email;
-                if (email && email.endsWith('@rakocontrols.com')) {
-                    // Valid domain - show content
-                    document.body.classList.add('authenticated');
-                    if (authOverlay) authOverlay.style.display = 'none';
-                    // Log usage event
-                    db.collection('toolUsage').add({
-                        uid: user.uid,
-                        email,
-                        action: 'open-editor',
-                        ts: firebase.firestore.FieldValue.serverTimestamp()
-                    }).catch(err => {
-                        console.error('usage log failed', err);
-                    });
-                } else {
-                    // Invalid domain - redirect to login
-                    window.location.href = 'index.html';
-                }
-            } else {
-                // User is signed out - redirect to login
-                window.location.href = 'index.html';
-            }
-        });
-    </script>
 </body>
 </html>
