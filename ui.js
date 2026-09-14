@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification } from './utils.js?v=1.10';
+import { showNotification } from './utils.js?v=1.11';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 
@@ -76,11 +76,11 @@ function buildModal(id, titleHtml, bodyHtml, footerHtml = '') {
     ].join(';');
     overlay.innerHTML = `
       <div class="app-modal-box" style="background:#fff;max-width:720px;width:100%;max-height:88vh;overflow-y:auto;
-           border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:32px;position:relative;
+           border-radius:16px;box-shadow:0 20px 60px rgba(1,3,31,0.3);padding:32px;position:relative;
            transform:scale(.97);transition:transform .2s ease;">
         <button class="app-modal-close" aria-label="Close"
-                style="position:absolute;top:16px;right:16px;background:#f1f3f5;border:none;border-radius:50%;
-                       width:36px;height:36px;font-size:1.4rem;line-height:1;cursor:pointer;color:#495057;">&times;</button>
+                style="position:absolute;top:16px;right:16px;background:var(--rako-panel);border:none;border-radius:50%;
+                       width:36px;height:36px;font-size:1.4rem;line-height:1;cursor:pointer;color:var(--rako-text-muted);">&times;</button>
         <div class="app-modal-head">${titleHtml}</div>
         <div class="app-modal-body">${bodyHtml}</div>
         ${footerHtml}
@@ -109,9 +109,9 @@ export function openHelp() {
     const { overlay, close } = buildModal(
         'appHelpModal',
         `<h2 style="margin:0 0 6px;font-size:1.6rem;font-weight:600;">Using the Schematic Tool</h2>
-         <p style="color:#6c757d;margin:0 0 20px;">Everything you need to draw and print a lighting schematic.</p>`,
+         <p style="color:var(--rako-text-muted);margin:0 0 20px;">Everything you need to draw and print a lighting schematic.</p>`,
         `<div class="help-content">${HELP_HTML}</div>`,
-        `<div style="margin-top:24px;padding-top:18px;border-top:1px solid #e9ecef;">
+        `<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--rako-line);">
             <button class="btn btn-outline-secondary btn-sm" id="replayWelcomeBtn">Show the welcome guide again</button>
          </div>`
     );
@@ -127,18 +127,18 @@ export function openWelcome(forced = false) {
 
     const step = (num, title, body) => `
       <div style="display:flex;gap:16px;margin-bottom:20px;align-items:flex-start;">
-        <div style="flex-shrink:0;width:32px;height:32px;border-radius:50%;background:#0d6efd;color:#fff;
+        <div style="flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--rako-accent);color:#fff;
                     display:flex;align-items:center;justify-content:center;font-weight:600;font-size:0.95rem;">${num}</div>
         <div>
           <div style="font-weight:600;margin-bottom:3px;">${title}</div>
-          <div style="color:#6c757d;line-height:1.5;font-size:0.95rem;">${body}</div>
+          <div style="color:var(--rako-text-muted);line-height:1.5;font-size:0.95rem;">${body}</div>
         </div>
       </div>`;
 
     const { overlay, close } = buildModal(
         'appWelcomeModal',
         `<h2 style="margin:0 0 8px;font-size:1.7rem;font-weight:600;">Welcome to the Schematic Tool</h2>
-         <p style="color:#6c757d;margin:0 0 26px;line-height:1.55;">
+         <p style="color:var(--rako-text-muted);margin:0 0 26px;line-height:1.55;">
            Plan a RAKO lighting system by dragging components onto a grid and wiring them together.
            When you're happy, print it to PDF. It's free to use and nothing is uploaded &mdash; your drawing stays on your computer.
          </p>`,
@@ -148,9 +148,9 @@ export function openWelcome(forced = false) {
                 'Click <b>Draw Line</b>, choose a cable colour, then click from one component to the next.') +
         step(3, 'Add your details and print',
                 'Fill in the project fields on the left, then <b>Print Schematic</b> and choose <i>Save as PDF</i>.'),
-        `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:26px;padding-top:20px;border-top:1px solid #e9ecef;">
+        `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:26px;padding-top:20px;border-top:1px solid var(--rako-line);">
             <button class="btn btn-primary" id="welcomeStartBtn">Start drawing</button>
-            <button class="btn btn-link text-decoration-none" id="welcomeHelpBtn" style="color:#6c757d;">See full instructions</button>
+            <button class="btn btn-link text-decoration-none" id="welcomeHelpBtn" style="color:var(--rako-text-muted);">See full instructions</button>
          </div>`
     );
 
@@ -185,8 +185,8 @@ function setupEmptyState() {
     hint.innerHTML = `
       <i class="bi bi-arrow-left" style="font-size:1.5rem;opacity:.5;"></i>
       <div>
-        <div style="font-weight:600;font-size:1.05rem;color:#495057;margin-bottom:4px;">Your drawing starts here</div>
-        <div style="color:#868e96;font-size:0.92rem;">Open a group on the left and drag a component onto the grid.</div>
+        <div class="es-title" style="font-weight:600;font-size:1.05rem;color:var(--rako-text);margin-bottom:4px;">Your drawing starts here</div>
+        <div style="color:var(--rako-text-muted);font-size:0.92rem;">Open a group on the left and drag a component onto the grid.</div>
       </div>`;
     wrapper.appendChild(hint);
 

@@ -25,10 +25,10 @@ running new HTML against stale JavaScript.
 
 The version appears in two places:
 
-- `custom.html` — `<script type="module" src="main.js?v=1.10">`
-- every relative import inside the `.js` files — `from './ui.js?v=1.10'`
+- `custom.html` — `<script type="module" src="main.js?v=1.11">`
+- every relative import inside the `.js` files — `from './ui.js?v=1.11'`
 
-Bump them together (a find-and-replace on `?v=1.10` is enough).
+Bump them together (a find-and-replace on `?v=1.11` is enough).
 
 ## Running locally
 

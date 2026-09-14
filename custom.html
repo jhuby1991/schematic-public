@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAKO Schematic Tool</title>
     <meta name="description" content="Plan and draw a RAKO lighting control system. Drag components onto the canvas, wire them together, and print a schematic to PDF.">
-    <meta name="theme-color" content="#343a40">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23343a40'/%3E%3Cg stroke='%23fff' stroke-width='2' fill='none' stroke-linecap='round'%3E%3Cpath d='M8 11h7M17 11h7M8 21h7M17 21h7'/%3E%3C/g%3E%3Ccircle cx='16' cy='11' r='2.6' fill='%230d6efd'/%3E%3Ccircle cx='16' cy='21' r='2.6' fill='%2328a745'/%3E%3C/svg%3E">
+    <meta name="theme-color" content="#01031F">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2301031F'/%3E%3Cg stroke='%23ffffff' stroke-width='2' fill='none' stroke-linecap='round'%3E%3Cpath d='M8 11h7M17 11h7M8 21h7M17 21h7'/%3E%3C/g%3E%3Ccircle cx='16' cy='11' r='2.6' fill='%23954DBC'/%3E%3Ccircle cx='16' cy='21' r='2.6' fill='%23E25D78'/%3E%3C/svg%3E">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap">
     <style>
         /* Public build: no authentication gate */
         .main-content, .toolbar {
@@ -1326,6 +1329,291 @@
         #pdfNotesBlock {
             margin-top: 16px !important;
         }
+
+        /* ==================================================================
+           RAKO brand theme
+           Palette and typography taken from rakocontrols.com.
+           Scope: application chrome only. Schematic semantics — connector
+           colours, node in/out dots and print output — are deliberately
+           left alone, because those colours carry meaning on the drawing.
+           ================================================================== */
+        :root {
+            --rako-ink:        #01031F;   /* deep navy: toolbar, dark surfaces */
+            --rako-ink-soft:   #24214C;   /* indigo: secondary dark */
+            --rako-text:       #1C1C1C;
+            --rako-text-muted: #4A5156;
+            --rako-accent:     #954DBC;   /* brand purple: primary actions */
+            --rako-accent-dk:  #7C3EA0;
+            --rako-accent-sf:  rgba(149, 77, 188, 0.16);
+            --rako-coral:      #E25D78;
+            --rako-panel:      #EBEDEE;   /* light grey panels */
+            --rako-line:       #D7DBDE;
+            --rako-radius-pill: 1000px;   /* rakocontrols.com uses full pills */
+            --rako-font: Avenir, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --rako-font-display: Quicksand, Avenir, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        body,
+        input[type="text"], input[type="date"], input[type="number"],
+        textarea, .btn, .form-control, .form-select {
+            font-family: var(--rako-font);
+        }
+        body { color: var(--rako-text); background-color: var(--rako-panel); }
+
+        /* ---- Toolbar ---- */
+        .toolbar {
+            background-color: var(--rako-ink);
+            padding: 10px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .toolbar .btn {
+            border-radius: var(--rako-radius-pill);
+            font-weight: 400;
+            padding: 5px 16px;
+            font-size: 0.85rem;
+            border-width: 1px;
+        }
+        .toolbar .btn-primary,
+        .toolbar .btn-info,
+        .toolbar .btn-success {
+            background-color: var(--rako-accent);
+            border-color: var(--rako-accent);
+            color: #fff;
+        }
+        .toolbar .btn-primary:hover,
+        .toolbar .btn-info:hover,
+        .toolbar .btn-success:hover {
+            background-color: var(--rako-accent-dk);
+            border-color: var(--rako-accent-dk);
+            color: #fff;
+        }
+        .toolbar .btn-secondary,
+        .toolbar .btn-warning {
+            background-color: rgba(255,255,255,0.10);
+            border-color: rgba(255,255,255,0.22);
+            color: #fff;
+        }
+        .toolbar .btn-secondary:hover,
+        .toolbar .btn-warning:hover {
+            background-color: rgba(255,255,255,0.18);
+            border-color: rgba(255,255,255,0.34);
+            color: #fff;
+        }
+        .toolbar .btn-outline-light,
+        .toolbar .btn-outline-info {
+            border-color: rgba(255,255,255,0.28);
+            color: rgba(255,255,255,0.92);
+            background: transparent;
+        }
+        .toolbar .btn-outline-light:hover,
+        .toolbar .btn-outline-info:hover {
+            background-color: rgba(255,255,255,0.14);
+            border-color: rgba(255,255,255,0.45);
+            color: #fff;
+        }
+        .toolbar .btn:disabled, .toolbar .btn.disabled { opacity: 0.38; }
+        .toolbar .btn-group .dropdown-toggle {
+            background-color: rgba(255,255,255,0.10);
+            border-color: rgba(255,255,255,0.22);
+            color: #fff;
+        }
+        .dropdown-menu {
+            border-radius: 12px;
+            border: 1px solid var(--rako-line);
+            box-shadow: 0 10px 32px rgba(1,3,31,0.14);
+            padding: 6px;
+            font-size: 0.88rem;
+        }
+        .dropdown-item { border-radius: 8px; padding: 7px 10px; }
+        .dropdown-item:active, .dropdown-item:focus {
+            background-color: var(--rako-accent-sf);
+            color: var(--rako-text);
+        }
+
+        /* ---- Left column ---- */
+        #left-column {
+            background-color: var(--rako-panel);
+            border-right: 1px solid var(--rako-line);
+        }
+        #drawing-toolbar,
+        #text-box-properties-panel,
+        #project-details {
+            background-color: #fff;
+            border-bottom: 1px solid var(--rako-line);
+        }
+        #palette { background-color: var(--rako-panel); }
+        #project-details h4,
+        #text-box-properties-panel h5 {
+            font-family: var(--rako-font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--rako-text-muted);
+            margin-bottom: 14px;
+        }
+        #project-details .form-label,
+        #text-box-properties-panel .form-label {
+            color: var(--rako-text-muted);
+            font-size: 0.8rem;
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border-color: var(--rako-line);
+            color: var(--rako-text);
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--rako-accent);
+            box-shadow: 0 0 0 0.2rem var(--rako-accent-sf);
+        }
+        #drawing-toolbar .btn {
+            border-radius: var(--rako-radius-pill);
+            border-color: var(--rako-line);
+            color: var(--rako-text);
+        }
+        #drawing-toolbar .btn:hover {
+            background-color: var(--rako-accent-sf);
+            border-color: var(--rako-accent);
+            color: var(--rako-accent-dk);
+        }
+        #drawing-toolbar .btn.active {
+            background-color: var(--rako-accent);
+            border-color: var(--rako-accent);
+            color: #fff;
+        }
+        #drawing-toolbar .app-version { color: #9EA2A5; }
+
+        /* ---- Palette ---- */
+        .palette-dropdown {
+            border: 1px solid var(--rako-line);
+            border-radius: 10px;
+            background-color: #fff;
+        }
+        .palette-dropdown-header {
+            background-color: #fff;
+            font-family: var(--rako-font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--rako-text-muted);
+            border-bottom: 1px solid var(--rako-line);
+            padding: 11px 13px;
+        }
+        .palette-dropdown-header:hover {
+            background-color: var(--rako-panel);
+            color: var(--rako-accent-dk);
+        }
+        .palette-dropdown-header.collapsed { border-bottom-color: transparent; }
+        .palette-item {
+            border-radius: 8px;
+            border: 1px solid transparent;
+            box-shadow: none;
+            color: var(--rako-text);
+            font-size: 0.86rem;
+        }
+        .palette-item:hover {
+            background-color: var(--rako-accent-sf);
+            border-color: var(--rako-accent);
+        }
+
+        /* ---- Canvas chrome (screen only) ---- */
+        #pdf-page-guide { border-color: rgba(226, 93, 120, 0.55); }
+        .canvas-component.selected,
+        .canvas-text-box.selected,
+        .floating-connector.selected,
+        .canvas-shape.selected {
+            border-color: var(--rako-accent) !important;
+            box-shadow: 0 0 6px var(--rako-accent-sf);
+        }
+        .canvas-text-box:hover { border-color: var(--rako-accent); }
+        #schematicTitleDisplay { font-family: var(--rako-font); color: var(--rako-text); }
+        #connector-type-notification {
+            background-color: rgba(1, 3, 31, 0.88);
+            border-radius: 12px;
+            font-family: var(--rako-font-display);
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+
+        /* ---- Onboarding, help, notices ---- */
+        #canvasEmptyState {
+            border-color: var(--rako-line);
+            background: rgba(255,255,255,0.94);
+        }
+        .help-content h3 {
+            font-family: var(--rako-font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            font-size: 0.8rem;
+            color: var(--rako-accent-dk);
+        }
+        .help-content li { color: var(--rako-text-muted); }
+        .app-modal-box .btn {
+            border-radius: var(--rako-radius-pill);
+            padding: 8px 22px;
+            font-weight: 400;
+        }
+        .app-modal-box .btn-primary {
+            background-color: var(--rako-accent);
+            border-color: var(--rako-accent);
+        }
+        .app-modal-box .btn-primary:hover {
+            background-color: var(--rako-accent-dk);
+            border-color: var(--rako-accent-dk);
+        }
+        #smallScreenNotice .ssn-card h2 {
+            font-family: var(--rako-font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-size: 1.05rem;
+        }
+        #smallScreenNotice .btn { border-radius: var(--rako-radius-pill); }
+        .metric-help { color: #9EA2A5; }
+
+        /* Side-panel scrollbar */
+        #palette::-webkit-scrollbar { width: 10px; }
+        #palette::-webkit-scrollbar-thumb {
+            background: #C7CCD0;
+            border-radius: 10px;
+            border: 3px solid var(--rako-panel);
+        }
+        #palette::-webkit-scrollbar-thumb:hover { background: #AEB4B9; }
+
+
+        /* ---- Global button + Bootstrap modal styling ---- */
+        .btn { border-radius: var(--rako-radius-pill); }
+        .btn-primary {
+            background-color: var(--rako-accent);
+            border-color: var(--rako-accent);
+        }
+        .btn-primary:hover, .btn-primary:focus {
+            background-color: var(--rako-accent-dk);
+            border-color: var(--rako-accent-dk);
+        }
+        .btn-outline-secondary {
+            border-color: var(--rako-line);
+            color: var(--rako-text-muted);
+        }
+        .btn-outline-secondary:hover {
+            background-color: var(--rako-panel);
+            border-color: #C7CCD0;
+            color: var(--rako-text);
+        }
+        .btn-danger { background-color: var(--rako-coral); border-color: var(--rako-coral); }
+        .btn-danger:hover { background-color: #CE4A65; border-color: #CE4A65; }
+        .modal-content { border-radius: 14px; border: none; box-shadow: 0 20px 60px rgba(1,3,31,0.28); }
+        .modal-header { border-bottom-color: var(--rako-line); }
+        .modal-footer { border-top-color: var(--rako-line); }
+        .modal-title {
+            font-family: var(--rako-font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--rako-text-muted);
+        }
+
     </style>
 </head>
 <body>
@@ -1714,6 +2002,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.10"></script>
+    <script type="module" src="main.js?v=1.11"></script>
 </body>
 </html>

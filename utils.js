@@ -3,9 +3,9 @@
 
 const TOAST_STYLES = {
     success: { bg: '#198754', icon: 'bi-check-circle-fill' },
-    error:   { bg: '#dc3545', icon: 'bi-exclamation-triangle-fill' },
-    warning: { bg: '#fd7e14', icon: 'bi-exclamation-circle-fill' },
-    info:    { bg: '#343a40', icon: 'bi-info-circle-fill' }
+    error:   { bg: 'var(--rako-coral)', icon: 'bi-exclamation-triangle-fill' },
+    warning: { bg: '#D9822B', icon: 'bi-exclamation-circle-fill' },
+    info:    { bg: 'var(--rako-ink)', icon: 'bi-info-circle-fill' }
 };
 
 function toastContainer() {
@@ -38,7 +38,7 @@ export function showToast(msg, type = 'info', duration = 2600) {
     toast.style.cssText = [
         `background:${style.bg}`, 'color:#fff', 'padding:12px 20px',
         'border-radius:10px', 'font-size:0.95rem', 'line-height:1.4',
-        'box-shadow:0 6px 24px rgba(0,0,0,0.22)', 'display:flex',
+        'box-shadow:0 6px 24px rgba(1,3,31,0.24)', 'display:flex',
         'align-items:center', 'gap:10px', 'opacity:0',
         'transform:translateY(-8px)', 'transition:opacity .22s ease, transform .22s ease',
         'pointer-events:auto', 'text-align:left'
@@ -90,13 +90,13 @@ export function showConfirm({
         const box = document.createElement('div');
         box.style.cssText = [
             'background:#fff', 'border-radius:14px', 'max-width:440px', 'width:100%',
-            'padding:28px', 'box-shadow:0 20px 60px rgba(0,0,0,0.3)',
-            'font-family:Avenir, Arial, sans-serif', 'transform:scale(.96)',
+            'padding:28px', 'box-shadow:0 20px 60px rgba(1,3,31,0.3)',
+            'font-family:var(--rako-font)', 'transform:scale(.96)',
             'transition:transform .18s ease'
         ].join(';');
         box.innerHTML = `
-            <h3 style="margin:0 0 10px;font-size:1.2rem;font-weight:600;color:#212529;"></h3>
-            <p style="margin:0 0 22px;color:#6c757d;line-height:1.55;font-size:0.95rem;"></p>
+            <h3 style="margin:0 0 10px;font-size:1.2rem;font-weight:600;color:var(--rako-text);"></h3>
+            <p style="margin:0 0 22px;color:var(--rako-text-muted);line-height:1.55;font-size:0.95rem;"></p>
             <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
                 <button data-act="cancel" class="btn btn-outline-secondary"></button>
                 <button data-act="ok" class="btn ${danger ? 'btn-danger' : 'btn-primary'}"></button>
@@ -144,16 +144,16 @@ export function showActionBar({ message, actions = [] }) {
     bar.id = 'actionBar';
     bar.style.cssText = [
         'position:fixed', 'top:56px', 'left:50%', 'transform:translateX(-50%) translateY(-12px)',
-        'z-index:99998', 'background:#fff', 'border:1px solid #dee2e6',
-        'border-radius:12px', 'box-shadow:0 10px 34px rgba(0,0,0,0.18)',
+        'z-index:99998', 'background:#fff', 'border:1px solid var(--rako-line)',
+        'border-radius:12px', 'box-shadow:0 10px 34px rgba(1,3,31,0.18)',
         'padding:14px 18px', 'display:flex', 'align-items:center', 'gap:14px',
-        'font-family:Avenir, Arial, sans-serif', 'font-size:0.92rem',
+        'font-family:var(--rako-font)', 'font-size:0.92rem',
         'max-width:min(94vw,620px)', 'flex-wrap:wrap', 'opacity:0',
         'transition:opacity .25s ease, transform .25s ease'
     ].join(';');
 
     const text = document.createElement('span');
-    text.style.cssText = 'color:#212529;flex:1 1 220px;line-height:1.45;';
+    text.style.cssText = 'color:var(--rako-text);flex:1 1 220px;line-height:1.45;';
     text.textContent = message;
     bar.appendChild(text);
 
