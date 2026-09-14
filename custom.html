@@ -1544,6 +1544,13 @@
         }
 
         /* ---- Canvas chrome (screen only) ---- */
+        /* Draw-line mode: the cursor is the mode indicator, the way it is in
+           CAD. Overrides the per-element cursors while armed. */
+        #drawing-canvas.draw-mode,
+        #drawing-canvas.draw-mode .canvas-component,
+        #drawing-canvas.draw-mode .canvas-text-box,
+        #drawing-canvas.draw-mode .canvas-shape,
+        #drawing-canvas.draw-mode .canvas-item { cursor: crosshair; }
         #pdf-page-guide { border-color: rgba(0, 0, 0, 0.38); }
         .canvas-component.selected,
         .canvas-text-box.selected,
@@ -1670,7 +1677,7 @@
 
     <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center;">
-            <button id="drawGridLineBtn" class="btn btn-primary btn-sm" style="margin-right:5px;">Draw Line</button>
+            <button id="drawGridLineBtn" class="btn btn-primary btn-sm" style="margin-right:5px;" title="Draw Line (L) — Esc or right-click to exit">Draw Line&nbsp;&nbsp;L</button>
             <!-- Zoom bar -->
             <div id="zoom-bar" style="display: none; align-items: center; gap: 4px; margin-right: 10px;">
                 <button id="zoomOutBtn" class="btn btn-light btn-sm" title="Zoom Out">-</button>

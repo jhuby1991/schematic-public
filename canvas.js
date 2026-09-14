@@ -150,15 +150,36 @@ export function setupCanvas(app) {
     let currentLineType = 'colour'; // 'colour' or 'dashed'
     let currentLineColor = 'black';
 
-    // --- Draw Line Button ---
+    // --- Draw Line Mode ---
+    // Single source of truth. Every entry point (button, L, Space, Escape,
+    // right-click) goes through here, so the button label, the canvas cursor
+    // and the notification can never drift out of sync.
+    function setDrawMode(on, { notify = true } = {}) {
+        on = !!on;
+        if (on === isGridLineDrawing) return;
+        isGridLineDrawing = on;
+        if (drawGridLineBtn) {
+            drawGridLineBtn.classList.toggle('btn-success', on);
+            drawGridLineBtn.classList.toggle('btn-primary', !on);
+            drawGridLineBtn.textContent = on ? 'Exit Draw Line  Esc' : 'Draw Line  L';
+        }
+        // The cursor is the mode indicator; see #drawing-canvas.draw-mode.
+        const canvasEl = document.getElementById('drawing-canvas');
+        if (canvasEl) canvasEl.classList.toggle('draw-mode', on);
+        // Abandon a half-drawn line when the mode is exited by keyboard or
+        // right-click rather than by completing the drag.
+        if (!on && typeof app._cancelTempLine === 'function') app._cancelTempLine();
+        if (notify && app.showNotification) {
+            app.showNotification(on ? 'Draw Line Mode: ON  (Esc or right-click to exit)' : 'Draw Line Mode: OFF');
+        }
+    }
+    function toggleDrawMode() { setDrawMode(!isGridLineDrawing); }
+    app.setDrawMode = setDrawMode;
+
     if (drawGridLineBtn) {
-        drawGridLineBtn.addEventListener('click', () => {
-            isGridLineDrawing = !isGridLineDrawing;
-            drawGridLineBtn.classList.toggle('btn-success', isGridLineDrawing);
-            drawGridLineBtn.classList.toggle('btn-primary', !isGridLineDrawing);
-            drawGridLineBtn.textContent = isGridLineDrawing ? 'Exit Draw Line' : 'Draw Line';
-            if (app.showNotification) app.showNotification(isGridLineDrawing ? 'Draw Line Mode: ON (Space)' : 'Draw Line Mode: OFF (Space)');
-        });
+        drawGridLineBtn.textContent = 'Draw Line  L';
+        drawGridLineBtn.title = 'Draw Line (L) \u2014 Esc or right-click to exit';
+        drawGridLineBtn.addEventListener('click', toggleDrawMode);
     }
 
     // --- Connector Colour Dropdown ---
@@ -208,9 +229,20 @@ export function setupCanvas(app) {
                 setConnectorColor('red');
                 if (app.showNotification) app.showNotification('DALI - Red');
                 break;
-            case ' ':
+            case 'l':
                 e.preventDefault();
-                if (drawGridLineBtn) drawGridLineBtn.click();
+                toggleDrawMode();
+                break;
+            case ' ':
+                // Legacy binding, kept so existing muscle memory still works.
+                e.preventDefault();
+                toggleDrawMode();
+                break;
+            case 'escape':
+                if (isGridLineDrawing) {
+                    e.preventDefault();
+                    setDrawMode(false);
+                }
                 break;
             case 'delete':
             case 'backspace':
@@ -1263,14 +1295,6 @@ export function setupCanvas(app) {
                     isDragging = true;
                     target.style.zIndex = 1000;
                     document.body.style.userSelect = 'none';
-                    // Exit draw mode when dragging starts
-                    if (isGridLineDrawing && drawGridLineBtn) {
-                        isGridLineDrawing = false;
-                        drawGridLineBtn.classList.remove('btn-success');
-                        drawGridLineBtn.classList.add('btn-primary');
-                        drawGridLineBtn.textContent = 'Draw Line';
-                        if (app.showNotification) app.showNotification('Draw Line Mode: OFF (Space)');
-                    }
                 } else {
                     return;
                 }
@@ -1331,14 +1355,11 @@ export function setupCanvas(app) {
         }
         target.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return; // Only left mouse button
-            // Exit draw mode when selecting/dragging an object
-            if (isGridLineDrawing && drawGridLineBtn) {
-                isGridLineDrawing = false;
-                drawGridLineBtn.classList.remove('btn-success');
-                drawGridLineBtn.classList.add('btn-primary');
-                drawGridLineBtn.textContent = 'Draw Line';
-                if (app.showNotification) app.showNotification('Draw Line Mode: OFF (Space)');
-            }
+            // While armed, the canvas owns the click: don't select or drag
+            // components, and stay in draw mode. The event still bubbles to
+            // #drawing-canvas, so a line can start on top of a component.
+            // Esc, right-click, L or the button exit the mode.
+            if (isGridLineDrawing) return;
             // Only change selection if you click an unselected object
             if (!isDragging) {
                 if (!selectedObjects.has(target)) {
@@ -1404,6 +1425,14 @@ export function setupCanvas(app) {
     let isDrawingLine = false;
     let lineStart = null;
     let tempLine = null;
+
+    // Called by setDrawMode() when the mode is exited mid-drag.
+    app._cancelTempLine = function () {
+        if (tempLine && tempLine.parentNode) tempLine.parentNode.removeChild(tempLine);
+        tempLine = null;
+        lineStart = null;
+        isDrawingLine = false;
+    };
 
     // Helper to clamp a value between min and max
     function clamp(val, min, max) {
@@ -1546,6 +1575,11 @@ export function setupCanvas(app) {
 
     if (drawingCanvas && svgOverlay) {
         drawingCanvas.addEventListener('mousedown', handleCanvasMouseDown);
+        drawingCanvas.addEventListener('contextmenu', (e) => {
+            if (!isGridLineDrawing) return;
+            e.preventDefault();
+            setDrawMode(false);
+        });
         drawingCanvas.addEventListener('mousemove', handleCanvasMouseMove);
         svgOverlay.addEventListener('mousemove', handleCanvasMouseMove);
         // Remove mouseup from canvas/svgOverlay, now handled globally
@@ -1559,14 +1593,6 @@ export function setupCanvas(app) {
 
     // Selection visual style (multi-select, toggle)
     function setSelectedObject(obj, additive = false) {
-        // Exit draw mode when selecting an object
-        if (isGridLineDrawing && drawGridLineBtn) {
-            isGridLineDrawing = false;
-            drawGridLineBtn.classList.remove('btn-success');
-            drawGridLineBtn.classList.add('btn-primary');
-            drawGridLineBtn.textContent = 'Draw Line';
-            if (app.showNotification) app.showNotification('Draw Line Mode: OFF (Space)');
-        }
         // Original selection code without resize handles
         if (!additive) clearSelection();
         if (!obj) return;
