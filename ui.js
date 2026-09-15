@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification } from './utils.js?v=1.14';
+import { showNotification } from './utils.js?v=1.15';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 
