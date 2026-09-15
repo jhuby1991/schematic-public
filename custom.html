@@ -142,7 +142,22 @@
          #project-details .form-control-sm {
              font-size: 0.8rem;
              padding: 0.2rem 0.4rem;
-             height: calc(1.5em + 0.4rem + 2px); 
+             height: calc(1.5em + 0.4rem + 2px);
+        }
+        .date-field-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .date-field-row input {
+            flex: 1;
+            min-width: 0;
+        }
+        .date-field-row .btn {
+            flex-shrink: 0;
+            white-space: nowrap;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
         }
 
         #palette {
@@ -1866,7 +1881,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.17</span>
+                <span class="app-version" title="Tool version">v1.18</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -1897,7 +1912,10 @@
                          </div>
                          <div class="mb-2">
                              <label for="formDate" class="form-label"><i class="bi bi-calendar-event"></i> Date:</label>
-                             <input type="date" class="form-control form-control-sm" id="formDate">
+                             <div class="date-field-row">
+                                 <input type="date" class="form-control form-control-sm" id="formDate">
+                                 <button type="button" class="btn btn-outline-secondary btn-sm" id="formDateTodayBtn" title="Set to today's date">Today</button>
+                             </div>
                          </div>
                          <div class="mb-2">
                              <label for="formVersion" class="form-label"><i class="bi bi-journal-bookmark"></i> Version:</label>
@@ -2202,6 +2220,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.17"></script>
+    <script type="module" src="main.js?v=1.18"></script>
 </body>
 </html>
