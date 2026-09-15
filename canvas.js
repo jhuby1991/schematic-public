@@ -1,10 +1,10 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.13';
-import { doAutosave } from './storage.js?v=1.13';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.13';
-import { showToast, showConfirm } from './utils.js?v=1.13';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.14';
+import { doAutosave } from './storage.js?v=1.14';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.14';
+import { showToast, showConfirm } from './utils.js?v=1.14';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -316,7 +316,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.13').then(mod => {
+                import('./connections.js?v=1.14').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -357,6 +357,37 @@ export function setupCanvas(app) {
         return {
             width:  (pageWidthMm  - 2 * marginMm) * mmToPx,
             height: (pageHeightMm - 2 * marginMm - infoBlockMm) * mmToPx
+        };
+    }
+
+    // The @page CSS rule's own margin (0.2cm = 2mm), which the browser
+    // insets automatically before body's content box starts.
+    const CSS_PAGE_MARGIN_MM = 2;
+
+    /**
+     * Full printable page, in px, inside the @page margin - i.e. what a
+     * .print-sheet's box should actually be. Computed the same way as
+     * getPrintAreaPx() (same PRINT_GEOMETRY), rather than left to the
+     * browser to resolve via vh/vw or a height:100% chain: both can resolve
+     * against the on-screen viewport rather than the real printed page
+     * depending on the exact print pipeline, and a viewport shorter than the
+     * page clips content at that boundary ("the bottom half of an object is
+     * missing").
+     */
+    // Shaved off the computed page box so it's never an exact match to the
+    // browser's own internal @page content-box math: floating-point mm->px
+    // conversion done independently by two different code paths (ours here,
+    // Chromium's own layout engine) landing a hair apart, if ours rounds up,
+    // is enough to spill a near-empty page's worth of content over into a
+    // spurious extra trailing page.
+    const PAGE_BOX_SAFETY_PX = 2;
+
+    function getPageBoxPx() {
+        const { pageWidthMm, pageHeightMm, dpi } = PRINT_GEOMETRY;
+        const mmToPx = (1 / 25.4) * dpi;
+        return {
+            width:  (pageWidthMm  - 2 * CSS_PAGE_MARGIN_MM) * mmToPx - PAGE_BOX_SAFETY_PX,
+            height: (pageHeightMm - 2 * CSS_PAGE_MARGIN_MM) * mmToPx - PAGE_BOX_SAFETY_PX
         };
     }
 
@@ -539,6 +570,9 @@ export function setupCanvas(app) {
 
         const sheet = document.createElement('div');
         sheet.className = 'print-sheet';
+        const pageBox = getPageBoxPx();
+        sheet.style.width = pageBox.width + 'px';
+        sheet.style.height = pageBox.height + 'px';
 
         const canvasClone = drawingCanvas.cloneNode(true);
         canvasClone.classList.add('ps-canvas');
@@ -555,14 +589,17 @@ export function setupCanvas(app) {
     }
 
     /**
-     * Wait for every <img> in `container` to finish loading (or fail), up to
-     * `timeoutMs`. cloneNode() copies <img> tags as-is; it doesn't wait for
-     * them, so without this a slow-loading component image (a real CDN, not
-     * localhost) could still be mid-fetch when window.print() captures the
-     * page, showing up cut off / partially rendered.
+     * Wait for every <img> across `sheets` to finish loading (or fail), up
+     * to `timeoutMs`. cloneNode() copies <img> tags as-is; it doesn't wait
+     * for them, so without this a slow-loading component image (a real CDN,
+     * not localhost) could still be mid-fetch when window.print() captures
+     * the page, showing up cut off / partially rendered.
      */
-    function waitForImages(container, timeoutMs = 4000) {
-        const pending = Array.from(container.querySelectorAll('img')).filter(img => !img.complete);
+    function waitForImages(sheets, timeoutMs = 4000) {
+        const pending = [];
+        sheets.forEach(sheet => {
+            Array.from(sheet.querySelectorAll('img')).forEach(img => { if (!img.complete) pending.push(img); });
+        });
         if (pending.length === 0) return Promise.resolve();
         return Promise.race([
             Promise.all(pending.map(img => new Promise(resolve => {
@@ -573,14 +610,16 @@ export function setupCanvas(app) {
         ]);
     }
 
-    function getPrintSheetsContainer() {
-        let container = document.getElementById('printSheetsContainer');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'printSheetsContainer';
-        }
-        document.body.appendChild(container); // always last in DOM order
-        return container;
+    /**
+     * Print sheets are appended directly to <body>, not into a wrapper
+     * element: a wrapper's own display mode (block vs contents vs anything
+     * else) has repeatedly proven unreliable for print pagination in
+     * Chromium, breaking in ways that depend on unrelated CSS elsewhere on
+     * the page (body's own display mode, in particular). A plain .print-sheet
+     * class is enough to find and clean them up.
+     */
+    function clearPrintSheets() {
+        document.querySelectorAll('.print-sheet').forEach(el => el.remove());
     }
 
     /**
@@ -596,16 +635,27 @@ export function setupCanvas(app) {
         isBuildingPrintSheets = true;
 
         try {
-            const container = getPrintSheetsContainer();
-            container.innerHTML = '';
+            clearPrintSheets();
+            const sheets = [];
 
             for (let i = 0; i < pages.length; i++) {
                 await renderPageContent(pages[i]);
                 await new Promise(requestAnimationFrame); // let layout settle before measuring
-                container.appendChild(buildPrintSheet(pages[i].name, i + 1, pages.length));
+                const sheet = buildPrintSheet(pages[i].name, i + 1, pages.length);
+                document.body.appendChild(sheet); // always last in DOM order
+                sheets.push(sheet);
+            }
+            // Only the actual last sheet should skip the trailing page break;
+            // set directly rather than via a :last-child selector, since
+            // sheets are siblings of everything else in body now, not a
+            // wrapper's only children.
+            if (sheets.length) {
+                const last = sheets[sheets.length - 1];
+                last.style.pageBreakAfter = 'auto';
+                last.style.breakAfter = 'auto';
             }
 
-            await waitForImages(container); // let every sheet's component images finish loading first
+            await waitForImages(sheets); // let every sheet's component images finish loading first
             await renderPageContent(pages[originalIndex]);
         } finally {
             isBuildingPrintSheets = false;
@@ -622,18 +672,17 @@ export function setupCanvas(app) {
     window.addEventListener('beforeprint', () => {
         renderPrintInfoBlock();
         renderPrintConnectorLegend();
-        const container = document.getElementById('printSheetsContainer');
-        if (container && container.children.length) return; // built by the Print button already
+        if (document.querySelector('.print-sheet')) return; // built by the Print button already
         // Native/Ctrl+P print: fall back to a single sheet of whatever page
         // is currently on screen (the full multi-page build only runs from
         // the Print Schematic button, since it needs to await page renders).
-        getPrintSheetsContainer().innerHTML = '';
-        getPrintSheetsContainer().appendChild(buildPrintSheet(pages[activePageIndex].name, 1, 1));
+        clearPrintSheets();
+        const sheet = buildPrintSheet(pages[activePageIndex].name, 1, 1);
+        document.body.appendChild(sheet);
     });
     window.addEventListener('afterprint', () => {
         cleanupPrintInfoBlock();
-        const container = document.getElementById('printSheetsContainer');
-        if (container) container.innerHTML = '';
+        clearPrintSheets();
         if (lastPrintScale <= PRINT_MIN_SCALE) {
             showToast(
                 'One or more pages are wider than the sheet, so they were printed at the smallest readable size. Moving components closer together will print larger.',
@@ -1488,7 +1537,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.13').then(mod => {
+                    import('./connections.js?v=1.14').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1715,7 +1764,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.13').then(mod => {
+        import('./connections.js?v=1.14').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1789,7 +1838,7 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.13').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.14').then(mod => mod.clearLineSelection());
         // Hide text box properties panel when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -1800,7 +1849,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.13').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.14').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1811,7 +1860,7 @@ export function setupCanvas(app) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => obj.remove());
             selectedObjects.clear();
-            import('./connections.js?v=1.13').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.14').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1884,7 +1933,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.13').then(mod => {
+            import('./connections.js?v=1.14').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2034,7 +2083,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.13');
+            const mod = await import('./connections.js?v=1.14');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2382,7 +2431,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.13').then(mod => {
+                    import('./connections.js?v=1.14').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2404,7 +2453,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.13').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.14').then(mod => mod.clearLineSelection());
             }
         });
     }

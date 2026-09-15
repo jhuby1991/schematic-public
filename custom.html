@@ -354,7 +354,10 @@
             background: #E4E4E4;
             color: var(--rako-text);
         }
-        #printSheetsContainer {
+        /* Print sheets are built into the DOM just before printing and
+           removed right after (see buildPrintSheets/afterprint in
+           canvas.js) - hidden on screen in the brief window they exist. */
+        .print-sheet {
             display: none;
         }
         #drawing-canvas {
@@ -729,37 +732,72 @@
                 box-sizing: border-box;
             }
             body {
-                font-family: Avenir, Arial, sans-serif !important; 
-                -webkit-print-color-adjust: exact; 
-                print-color-adjust: exact; 
-                overflow: hidden; 
-                border: 1px solid black; 
+                /* The base (screen) rule makes body a column flex container,
+                   for the toolbar+content app layout - never overridden for
+                   print. Flex items get shrunk to fit the flex container's
+                   own (viewport-bound) box regardless of their own explicit
+                   height, which was squeezing every .print-sheet down to a
+                   fraction of a real page ("the bottom half of an object is
+                   missing"). display:block puts print's content back in
+                   normal flow, which page-break-after also expects. */
+                display: block !important;
+                font-family: Avenir, Arial, sans-serif !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                /* Not overflow:hidden: body's height:100% can resolve against
+                   the on-screen viewport rather than the real printed page
+                   depending on the print pipeline, and with overflow:hidden
+                   that clips print-sheet content past that boundary ("the
+                   bottom half of an object is missing") - each .print-sheet
+                   now carries its own explicit page-sized box regardless
+                   (see getPageBoxPx() in canvas.js), and page-break-after is
+                   what paginates them, so body doesn't need to clip. */
+                border: 1px solid black;
                 background: #fff !important;
                 border-radius: 30px;
             }
             #palette, .toolbar, #pdf-page-guide, #project-details, #schematicTitleDisplay, #drawing-toolbar, #text-box-properties-panel, #left-column, #pageTabsBar {
                 display: none !important;
             }
+            /* Explicit, not relying on Bootstrap's own CSS: a modal only
+               gets Bootstrap's default display:none if bootstrap.min.css
+               actually loaded (CDN hiccup, ad blocker, slow network can all
+               stop it). Without body's old overflow:hidden safety net (see
+               body rule below) an un-styled, un-hidden modal renders as a
+               plain visible block and pushes print content down a page. */
+            .modal {
+                display: none !important;
+            }
 
             /* The interactive editor is never what gets printed - printing
-               builds one .print-sheet per page/tab into #printSheetsContainer
-               (see buildPrintSheets in canvas.js) and prints that instead. */
+               builds one .print-sheet per page/tab (see buildPrintSheets in
+               canvas.js) and prints those instead. */
             .main-content {
                 display: none !important;
             }
 
-            #printSheetsContainer {
-                /* display:contents - not block - so this wrapper generates no
-                   box of its own; its .print-sheet children paginate as if
-                   they were direct children of body. A block box here, even
-                   empty, was enough to push everything onto a spurious extra
-                   trailing page in Chromium's print pagination. */
-                display: contents !important;
-            }
             .print-sheet {
+                /* Sheets are appended directly to <body>, no wrapper element
+                   (a wrapper's own display mode - block, contents, whatever -
+                   has repeatedly proven unreliable for print pagination in
+                   Chromium, breaking in ways that depend on unrelated CSS
+                   elsewhere on the page). display:none on .print-sheet is the
+                   screen-mode default (see base stylesheet); override back
+                   on here.
+                   width/height are set inline in px by buildPrintSheet()
+                   (getPageBoxPx() in canvas.js), computed the same way the
+                   print-fit math already computes the page size - not left
+                   to vh/vw or a %-height chain, both of which can resolve
+                   against the on-screen viewport rather than the real
+                   printed page depending on the print pipeline, clipping
+                   content at that boundary ("the bottom half of an object
+                   is missing") if the viewport falls short of a real page.
+                   100% here is only a fallback if that inline style is
+                   somehow absent. */
+                display: block !important;
                 position: relative;
-                width: 100vw;
-                height: 100vh;
+                width: 100%;
+                height: 100%;
                 overflow: hidden;
                 page-break-after: always;
                 break-after: page;
@@ -1829,7 +1867,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.13</span>
+                <span class="app-version" title="Tool version">v1.14</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2098,8 +2136,6 @@
         </div>
     </div>
 
-    <div id="printSheetsContainer"></div>
-
     <div id="print-info-block-template">
         <div id="pdfInfoRow">
             <div id="pdfNotesBlock">
@@ -2167,6 +2203,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.13"></script>
+    <script type="module" src="main.js?v=1.14"></script>
 </body>
 </html>
