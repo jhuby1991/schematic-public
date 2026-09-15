@@ -1,10 +1,10 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.16';
-import { doAutosave } from './storage.js?v=1.16';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.16';
-import { showToast, showConfirm } from './utils.js?v=1.16';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.17';
+import { doAutosave } from './storage.js?v=1.17';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.17';
+import { showToast, showConfirm } from './utils.js?v=1.17';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -316,7 +316,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.16').then(mod => {
+                import('./connections.js?v=1.17').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -746,6 +746,7 @@ export function setupCanvas(app) {
         drawingCanvas.addEventListener('drop', (e) => {
             e.preventDefault();
             if (draggedPaletteItem) {
+                if (isGridLineDrawing) setDrawMode(false); // adding an object reads as "done drawing", not "draw to it"
                 const type = e.dataTransfer.getData('text/plain');
                 const imgSrc = e.dataTransfer.getData('image-src');
                 const coords = getCanvasCoordinates(e);
@@ -1491,6 +1492,12 @@ export function setupCanvas(app) {
         let isDragging = false, dragStartX, dragStartY;
         let groupDragData = null;
         let groupLineDragData = null;
+        // Was draw-line mode armed when this gesture started? A component
+        // is always draggable/clickable as normal, draw mode or not - the
+        // difference is only that armed mode exits once the gesture resolves
+        // into a real drag (moving it) or a plain click (selecting it),
+        // since either one reads as "I want this object", not "draw a line".
+        let startedWhileArmed = false;
         function onMouseMove(e) {
             if (!isDragging) {
                 // Check drag threshold
@@ -1501,6 +1508,7 @@ export function setupCanvas(app) {
                     isDragging = true;
                     target.style.zIndex = 1000;
                     document.body.style.userSelect = 'none';
+                    if (startedWhileArmed) setDrawMode(false);
                 } else {
                     return;
                 }
@@ -1537,7 +1545,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.16').then(mod => {
+                    import('./connections.js?v=1.17').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1555,17 +1563,21 @@ export function setupCanvas(app) {
                 }
                 doAutosave(app);
                 saveState(); // Save after move
+            } else if (startedWhileArmed) {
+                // A plain click (no real drag) on a component while armed:
+                // reads as "select this object", not "draw a line from it".
+                setDrawMode(false);
             }
+            startedWhileArmed = false;
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         }
         target.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return; // Only left mouse button
-            // While armed, the canvas owns the click: don't select or drag
-            // components, and stay in draw mode. The event still bubbles to
-            // #drawing-canvas, so a line can start on top of a component.
-            // Esc, right-click, L or the button exit the mode.
-            if (isGridLineDrawing) return;
+            // A component is always draggable/clickable, draw mode or not -
+            // see onMouseMove/onMouseUp above for how armed mode exits once
+            // the gesture resolves into a move or a click.
+            startedWhileArmed = isGridLineDrawing;
             // Only change selection if you click an unselected object
             if (!isDragging) {
                 if (!selectedObjects.has(target)) {
@@ -1631,9 +1643,6 @@ export function setupCanvas(app) {
     let isDrawingLine = false;
     let lineStart = null;
     let tempLine = null;
-    let lineMouseDownClientPos = null;
-    let lineMouseDownOnComponent = false;
-    const CLICK_MOVE_THRESHOLD_PX = 4; // below this, mousedown->mouseup is a click, not a drag
 
     // Called by setDrawMode() when the mode is exited mid-drag.
     app._cancelTempLine = function () {
@@ -1696,12 +1705,15 @@ export function setupCanvas(app) {
     // Start drawing a line
     function handleCanvasMouseDown(e) {
         if (!isGridLineDrawing) return;
+        // Lines only start from empty canvas. A mousedown that landed on a
+        // component is a move-or-exit gesture instead (see makeDraggable) -
+        // an existing line can still end ON a component via the
+        // findNearestObject snap below, just not start by clicking one.
+        if (e.target.closest('.canvas-item')) return;
         const pos = getClampedCanvasMousePos(e);
         const snappedStart = snapToGrid(pos.x, pos.y);
         isDrawingLine = true;
         lineStart = snappedStart;
-        lineMouseDownClientPos = { x: e.clientX, y: e.clientY };
-        lineMouseDownOnComponent = !!e.target.closest('.canvas-item');
         // Create temp SVG line
         if (!tempLine) {
             tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -1745,20 +1757,6 @@ export function setupCanvas(app) {
         if (!isGridLineDrawing || !isDrawingLine || !tempLine || !lineStart) {
             return;
         }
-        // A plain click (no real drag) landing on a component isn't an
-        // attempt to draw a line from it - it reads as "I want this
-        // object", so exit draw mode instead of leaving a zero-length
-        // connection behind at the click point.
-        const moved = lineMouseDownClientPos
-            ? Math.hypot(e.clientX - lineMouseDownClientPos.x, e.clientY - lineMouseDownClientPos.y)
-            : Infinity;
-        const wasClickOnComponent = lineMouseDownOnComponent && moved < CLICK_MOVE_THRESHOLD_PX;
-        lineMouseDownClientPos = null;
-        lineMouseDownOnComponent = false;
-        if (wasClickOnComponent) {
-            setDrawMode(false); // also cancels/removes the temp line via app._cancelTempLine
-            return;
-        }
         const pos = getClampedCanvasMousePos(e);
         const snappedEnd = snapToGrid(pos.x, pos.y);
         const orthoEnd = getOrthogonalPoint(lineStart, snappedEnd);
@@ -1783,7 +1781,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.16').then(mod => {
+        import('./connections.js?v=1.17').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1857,7 +1855,7 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.16').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.17').then(mod => mod.clearLineSelection());
         // Hide text box properties panel when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -1868,7 +1866,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.16').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.17').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1879,7 +1877,7 @@ export function setupCanvas(app) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => obj.remove());
             selectedObjects.clear();
-            import('./connections.js?v=1.16').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.17').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1952,7 +1950,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.16').then(mod => {
+            import('./connections.js?v=1.17').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2102,7 +2100,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.16');
+            const mod = await import('./connections.js?v=1.17');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2450,7 +2448,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.16').then(mod => {
+                    import('./connections.js?v=1.17').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2472,7 +2470,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.16').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.17').then(mod => mod.clearLineSelection());
             }
         });
     }
