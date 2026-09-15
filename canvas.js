@@ -21,6 +21,12 @@ const MAX_HISTORY_SIZE = 250;
 let undoStack = [];
 let redoStack = [];
 let isRestoring = false;
+// True for the whole multi-page print build (see buildPrintSheets), not just
+// each individual page's isRestoring window. Between per-page renders the
+// canvas is still showing a page other than activePageIndex (isRestoring is
+// briefly false there too), so a stray autosave - a delayed image load, or
+// any other async trigger - is unsafe there just as much as mid-render.
+let isBuildingPrintSheets = false;
 const DINDLI_DEFAULT_LABEL = 'Up to 64 DALI Ballasts';
 
 // --- Pages (tabs) ---
@@ -165,7 +171,10 @@ function syncActivePageFromCanvas() {
     // vice versa. Several create/update helpers autosave unconditionally as
     // they run, so autosave can fire in the middle of that rebuild - capturing
     // it here would overwrite the page's real data with a torn snapshot.
-    if (isRestoring) return;
+    // isBuildingPrintSheets covers the wider window: for the whole print
+    // build, the canvas may be showing a page other than activePageIndex
+    // even when isRestoring is momentarily false between per-page renders.
+    if (isRestoring || isBuildingPrintSheets) return;
     if (!pages[activePageIndex]) return;
     pages[activePageIndex] = { ...pages[activePageIndex], ...getSerializableCanvasState() };
 }
@@ -565,17 +574,22 @@ export function setupCanvas(app) {
         persistActivePage();
         const originalIndex = activePageIndex;
         lastPrintScale = 1;
+        isBuildingPrintSheets = true;
 
-        const container = getPrintSheetsContainer();
-        container.innerHTML = '';
+        try {
+            const container = getPrintSheetsContainer();
+            container.innerHTML = '';
 
-        for (let i = 0; i < pages.length; i++) {
-            await renderPageContent(pages[i]);
-            await new Promise(requestAnimationFrame); // let layout settle before measuring
-            container.appendChild(buildPrintSheet(pages[i].name, i + 1, pages.length));
+            for (let i = 0; i < pages.length; i++) {
+                await renderPageContent(pages[i]);
+                await new Promise(requestAnimationFrame); // let layout settle before measuring
+                container.appendChild(buildPrintSheet(pages[i].name, i + 1, pages.length));
+            }
+
+            await renderPageContent(pages[originalIndex]);
+        } finally {
+            isBuildingPrintSheets = false;
         }
-
-        await renderPageContent(pages[originalIndex]);
         renderTabBar();
     }
 
