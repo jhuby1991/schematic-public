@@ -159,6 +159,13 @@ function getSerializableCanvasState() {
 
 /** Refresh the active page's stored content from the currently-live canvas. */
 function syncActivePageFromCanvas() {
+    // While a page is being programmatically rebuilt (tab switch, undo/redo,
+    // print, file load - see renderPageContent), the live canvas is
+    // mid-teardown/rebuild: items may be back but connections not yet, or
+    // vice versa. Several create/update helpers autosave unconditionally as
+    // they run, so autosave can fire in the middle of that rebuild - capturing
+    // it here would overwrite the page's real data with a torn snapshot.
+    if (isRestoring) return;
     if (!pages[activePageIndex]) return;
     pages[activePageIndex] = { ...pages[activePageIndex], ...getSerializableCanvasState() };
 }
