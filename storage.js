@@ -1,8 +1,8 @@
 // storage.js
 // Handles local save/load logic.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.12';
-import { showToast, showActionBar } from './utils.js?v=1.12';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.19';
+import { showToast, showActionBar } from './utils.js?v=1.19';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
@@ -103,12 +103,15 @@ export function setupStorage(app) {
 
     // --- Print ---
     if (printSchematicBtn) {
-        printSchematicBtn.addEventListener('click', () => {
+        printSchematicBtn.addEventListener('click', async () => {
             // Set document.title to project name and version for print file name
             const originalTitle = document.title;
             const projectName = (projectNameInput?.value || 'schematic').replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
             const version = versionInput?.value ? `_v${versionInput.value.replace(/[^a-z0-9_.-]/gi, '_')}` : '';
             document.title = `${projectName}${version}`;
+            if (window.app && typeof window.app.printAllPages === 'function') {
+                await window.app.printAllPages();
+            }
             window.print();
             // Restore original title after a short delay
             setTimeout(() => { document.title = originalTitle; }, 1000);

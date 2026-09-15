@@ -1,10 +1,10 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.12';
-import { doAutosave } from './storage.js?v=1.12';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.12';
-import { showToast } from './utils.js?v=1.12';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.19';
+import { doAutosave } from './storage.js?v=1.19';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.19';
+import { showToast, showConfirm } from './utils.js?v=1.19';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -21,25 +21,60 @@ const MAX_HISTORY_SIZE = 250;
 let undoStack = [];
 let redoStack = [];
 let isRestoring = false;
+// True for the whole multi-page print build (see buildPrintSheets), not just
+// each individual page's isRestoring window. Between per-page renders the
+// canvas is still showing a page other than activePageIndex (isRestoring is
+// briefly false there too), so a stray autosave - a delayed image load, or
+// any other async trigger - is unsafe there just as much as mid-render.
+let isBuildingPrintSheets = false;
 const DINDLI_DEFAULT_LABEL = 'Up to 64 DALI Ballasts';
 
+// --- Pages (tabs) ---
+// Each page is one printable sheet: its own components, connections, grid
+// lines and rectangles. The app still has exactly one live canvas/overlay
+// pair (see setupCanvas) - switching tabs swaps a page's data in and out of
+// it, rather than keeping N separate canvases, so every existing drag/
+// select/wire handler keeps working unmodified. Project details are shared
+// across all pages, not stored here.
+let pages = [];
+let activePageIndex = 0;
+// Per-page undo/redo history, keyed by page id. `undoStack`/`redoStack`
+// above always alias the active page's arrays (see activatePage below).
+let pageHistories = {};
+
+function makePageId() {
+    return 'page-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+}
+function makeBlankPage(name) {
+    return { id: makePageId(), name, items: [], connections: [], gridLines: [], rectangles: [] };
+}
+
 // --- Schematic Save/Load ---
-function getSerializableCanvasState() {
-    console.debug('[getSerializableCanvasState] called');
-    // Collect project details
+/** Shared project details, common to every page/tab in the file. */
+function collectProjectDetails() {
     const projectNameInput = document.getElementById('formProjectName');
     const dateInput = document.getElementById('formDate');
     const versionInput = document.getElementById('formVersion');
     const salespersonInput = document.getElementById('formSalesman');
     const quoteReferenceInput = document.getElementById('formQuoteReference');
 
-    const projectDetails = {
+    return {
         projectName: projectNameInput ? projectNameInput.value : '',
         date: dateInput ? dateInput.value : '',
         version: versionInput ? versionInput.value : '',
         salesperson: salespersonInput ? salespersonInput.value : '',
         quoteReference: quoteReferenceInput ? quoteReferenceInput.value : ''
     };
+}
+
+/**
+ * Snapshot of the currently-live canvas: one page's worth of content
+ * (items, connections, grid lines, rectangles). Does not include project
+ * details, which are shared across pages. Used for undo/redo snapshots and
+ * for capturing a page's content before switching away from it.
+ */
+function getSerializableCanvasState() {
+    console.debug('[getSerializableCanvasState] called');
     // Collect all objects
     const drawingCanvas = document.getElementById('drawing-canvas');
     const items = [];
@@ -117,12 +152,40 @@ function getSerializableCanvasState() {
         y2: parseInt(line.getAttribute('y2'), 10),
         color: line.getAttribute('stroke')
     }));
+    // Collect hand-drawn rectangles
+    const rectangles = Array.from(svgOverlay.querySelectorAll('rect.canvas-rect')).map(r => ({
+        x: parseFloat(r.getAttribute('x')),
+        y: parseFloat(r.getAttribute('y')),
+        width: parseFloat(r.getAttribute('width')),
+        height: parseFloat(r.getAttribute('height'))
+    }));
     console.debug('[getSerializableCanvasState] items:', items);
-    return { projectDetails, items, connections, gridLines };
+    return { items, connections, gridLines, rectangles };
+}
+
+/** Refresh the active page's stored content from the currently-live canvas. */
+function syncActivePageFromCanvas() {
+    // While a page is being programmatically rebuilt (tab switch, undo/redo,
+    // print, file load - see renderPageContent), the live canvas is
+    // mid-teardown/rebuild: items may be back but connections not yet, or
+    // vice versa. Several create/update helpers autosave unconditionally as
+    // they run, so autosave can fire in the middle of that rebuild - capturing
+    // it here would overwrite the page's real data with a torn snapshot.
+    // isBuildingPrintSheets covers the wider window: for the whole print
+    // build, the canvas may be showing a page other than activePageIndex
+    // even when isRestoring is momentarily false between per-page renders.
+    if (isRestoring || isBuildingPrintSheets) return;
+    if (!pages[activePageIndex]) return;
+    pages[activePageIndex] = { ...pages[activePageIndex], ...getSerializableCanvasState() };
 }
 
 export function getSchematicData() {
-    return getSerializableCanvasState();
+    syncActivePageFromCanvas();
+    return {
+        projectDetails: collectProjectDetails(),
+        pages: pages.map(p => ({ ...p })),
+        activePageIndex
+    };
 }
 
 export function setupCanvas(app) {
@@ -130,6 +193,12 @@ export function setupCanvas(app) {
     window.app = window.app || app;
     window.app._realLoadSchematicData = realLoadSchematicData;
     window.app.loadSchematicData = function(data) { return window.app._realLoadSchematicData(data); };
+
+    // Start with a single blank page; a subsequent file/autosave load (if
+    // any) replaces this via realLoadSchematicData.
+    pages = [makeBlankPage('Tab 1')];
+    activePageIndex = 0;
+    pageHistories = {};
 
     // TODO: Migrate all canvas drawing, selection, marquee, grid lines, SVG overlay, and canvas-related event logic here from custom.html
     // This includes:
@@ -247,7 +316,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.12').then(mod => {
+                import('./connections.js?v=1.19').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -278,7 +347,7 @@ export function setupCanvas(app) {
         pageWidthMm: 297,          // A4 landscape
         pageHeightMm: 210,
         marginMm: 10,
-        infoBlockMm: 38.4,         // reserved for the title block + notes
+        infoBlockMm: 50,           // reserved for the title block + notes (matches its 5cm print height)
         dpi: 96
     };
 
@@ -288,6 +357,37 @@ export function setupCanvas(app) {
         return {
             width:  (pageWidthMm  - 2 * marginMm) * mmToPx,
             height: (pageHeightMm - 2 * marginMm - infoBlockMm) * mmToPx
+        };
+    }
+
+    // The @page CSS rule's own margin (0.2cm = 2mm), which the browser
+    // insets automatically before body's content box starts.
+    const CSS_PAGE_MARGIN_MM = 2;
+
+    /**
+     * Full printable page, in px, inside the @page margin - i.e. what a
+     * .print-sheet's box should actually be. Computed the same way as
+     * getPrintAreaPx() (same PRINT_GEOMETRY), rather than left to the
+     * browser to resolve via vh/vw or a height:100% chain: both can resolve
+     * against the on-screen viewport rather than the real printed page
+     * depending on the exact print pipeline, and a viewport shorter than the
+     * page clips content at that boundary ("the bottom half of an object is
+     * missing").
+     */
+    // Shaved off the computed page box so it's never an exact match to the
+    // browser's own internal @page content-box math: floating-point mm->px
+    // conversion done independently by two different code paths (ours here,
+    // Chromium's own layout engine) landing a hair apart, if ours rounds up,
+    // is enough to spill a near-empty page's worth of content over into a
+    // spurious extra trailing page.
+    const PAGE_BOX_SAFETY_PX = 2;
+
+    function getPageBoxPx() {
+        const { pageWidthMm, pageHeightMm, dpi } = PRINT_GEOMETRY;
+        const mmToPx = (1 / 25.4) * dpi;
+        return {
+            width:  (pageWidthMm  - 2 * CSS_PAGE_MARGIN_MM) * mmToPx - PAGE_BOX_SAFETY_PX,
+            height: (pageHeightMm - 2 * CSS_PAGE_MARGIN_MM) * mmToPx - PAGE_BOX_SAFETY_PX
         };
     }
 
@@ -370,12 +470,12 @@ export function setupCanvas(app) {
     }
 
     /* ------------------------------------------------------------------
-       Fit the drawing to the page at print time.
+       Fit each page to its own sheet at print time.
 
-       The print stylesheet already applies `transform: var(--print-transform)`
-       to both #drawing-canvas and #svg-overlay; this fills that variable in.
-       Without it the canvas printed at 1:1 and anything past the page guide
-       was lost off the edge of the sheet.
+       Print produces one .print-sheet per page/tab (see buildPrintSheets
+       below), each a clone of #drawing-canvas positioned and scaled to fit
+       that page's own content. Without this the canvas printed at 1:1 and
+       anything past the page guide was lost off the edge of the sheet.
        ------------------------------------------------------------------ */
     const PRINT_MIN_SCALE = 0.5;   // below this the drawing is too small to read
     const PRINT_PADDING_PX = 8;
@@ -436,17 +536,10 @@ export function setupCanvas(app) {
         return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
     }
 
-    function applyPrintFit() {
-        const root = document.documentElement;
-        const bounds = getContentBoundsPx();
-        lastPrintScale = 1;
+    /** Pure fit math: bounds + printable area -> a translate+scale transform. */
+    function computeFitTransform(bounds, area) {
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
 
-        if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-            root.style.removeProperty('--print-transform');
-            return;
-        }
-
-        const area = getPrintAreaPx();
         const targetW = area.width  - PRINT_PADDING_PX * 2;
         const targetH = area.height - PRINT_PADDING_PX * 2;
 
@@ -454,7 +547,6 @@ export function setupCanvas(app) {
         // print blown up across the whole sheet.
         let scale = Math.min(targetW / bounds.width, targetH / bounds.height, 1);
         if (scale < PRINT_MIN_SCALE) scale = PRINT_MIN_SCALE;
-        lastPrintScale = scale;
 
         // Centre whatever room is left over.
         const offsetX = PRINT_PADDING_PX + Math.max(0, (targetW - bounds.width  * scale) / 2);
@@ -462,24 +554,138 @@ export function setupCanvas(app) {
 
         const tx = offsetX - bounds.x * scale;
         const ty = offsetY - bounds.y * scale;
-        root.style.setProperty('--print-transform', `translate(${tx}px, ${ty}px) scale(${scale})`);
+        return { scale, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
     }
 
-    function clearPrintFit() {
-        document.documentElement.style.removeProperty('--print-transform');
+    /**
+     * Clone the currently-live #drawing-canvas into a single .print-sheet,
+     * fitted to the page. #svg-overlay is a DOM child of #drawing-canvas, so
+     * the clone's overlay is left untransformed - it inherits the canvas
+     * clone's transform visually, and giving it its own would compound it.
+     */
+    function buildPrintSheet(pageName, pageNum, totalPages) {
+        const bounds = getContentBoundsPx();
+        const fit = computeFitTransform(bounds, getPrintAreaPx());
+        if (fit && fit.scale <= PRINT_MIN_SCALE) lastPrintScale = Math.min(lastPrintScale, fit.scale);
+
+        const sheet = document.createElement('div');
+        sheet.className = 'print-sheet';
+        const pageBox = getPageBoxPx();
+        sheet.style.width = pageBox.width + 'px';
+        sheet.style.height = pageBox.height + 'px';
+
+        const canvasClone = drawingCanvas.cloneNode(true);
+        canvasClone.classList.add('ps-canvas');
+        canvasClone.style.transform = fit ? fit.transform : 'none';
+        sheet.appendChild(canvasClone);
+
+        if (totalPages > 1) {
+            const tag = document.createElement('div');
+            tag.className = 'print-sheet-tag';
+            tag.textContent = `Page ${pageNum} of ${totalPages} — ${pageName}`;
+            sheet.appendChild(tag);
+        }
+        return sheet;
     }
+
+    /**
+     * Wait for every <img> across `sheets` to finish loading (or fail), up
+     * to `timeoutMs`. cloneNode() copies <img> tags as-is; it doesn't wait
+     * for them, so without this a slow-loading component image (a real CDN,
+     * not localhost) could still be mid-fetch when window.print() captures
+     * the page, showing up cut off / partially rendered.
+     */
+    function waitForImages(sheets, timeoutMs = 4000) {
+        const pending = [];
+        sheets.forEach(sheet => {
+            Array.from(sheet.querySelectorAll('img')).forEach(img => { if (!img.complete) pending.push(img); });
+        });
+        if (pending.length === 0) return Promise.resolve();
+        return Promise.race([
+            Promise.all(pending.map(img => new Promise(resolve => {
+                img.addEventListener('load', resolve, { once: true });
+                img.addEventListener('error', resolve, { once: true }); // don't hang printing on one broken image
+            }))),
+            new Promise(resolve => setTimeout(resolve, timeoutMs))
+        ]);
+    }
+
+    /**
+     * Print sheets are appended directly to <body>, not into a wrapper
+     * element: a wrapper's own display mode (block vs contents vs anything
+     * else) has repeatedly proven unreliable for print pagination in
+     * Chromium, breaking in ways that depend on unrelated CSS elsewhere on
+     * the page (body's own display mode, in particular). A plain .print-sheet
+     * class is enough to find and clean them up.
+     */
+    function clearPrintSheets() {
+        document.querySelectorAll('.print-sheet').forEach(el => el.remove());
+    }
+
+    /**
+     * Build one print sheet per page/tab. Sequentially renders each page's
+     * data into the live canvas (reusing all normal rendering logic) so it
+     * can be measured and cloned, then restores whichever page was actually
+     * showing before printing began.
+     */
+    async function buildPrintSheets() {
+        persistActivePage();
+        const originalIndex = activePageIndex;
+        lastPrintScale = 1;
+        isBuildingPrintSheets = true;
+
+        try {
+            clearPrintSheets();
+            const sheets = [];
+
+            for (let i = 0; i < pages.length; i++) {
+                await renderPageContent(pages[i]);
+                await new Promise(requestAnimationFrame); // let layout settle before measuring
+                const sheet = buildPrintSheet(pages[i].name, i + 1, pages.length);
+                document.body.appendChild(sheet); // always last in DOM order
+                sheets.push(sheet);
+            }
+            // Only the actual last sheet should skip the trailing page break;
+            // set directly rather than via a :last-child selector, since
+            // sheets are siblings of everything else in body now, not a
+            // wrapper's only children.
+            if (sheets.length) {
+                const last = sheets[sheets.length - 1];
+                last.style.pageBreakAfter = 'auto';
+                last.style.breakAfter = 'auto';
+            }
+
+            await waitForImages(sheets); // let every sheet's component images finish loading first
+            await renderPageContent(pages[originalIndex]);
+        } finally {
+            isBuildingPrintSheets = false;
+        }
+        renderTabBar();
+    }
+
+    app.printAllPages = async function() {
+        renderPrintInfoBlock();
+        renderPrintConnectorLegend();
+        await buildPrintSheets();
+    };
 
     window.addEventListener('beforeprint', () => {
         renderPrintInfoBlock();
         renderPrintConnectorLegend();
-        applyPrintFit();
+        if (document.querySelector('.print-sheet')) return; // built by the Print button already
+        // Native/Ctrl+P print: fall back to a single sheet of whatever page
+        // is currently on screen (the full multi-page build only runs from
+        // the Print Schematic button, since it needs to await page renders).
+        clearPrintSheets();
+        const sheet = buildPrintSheet(pages[activePageIndex].name, 1, 1);
+        document.body.appendChild(sheet);
     });
     window.addEventListener('afterprint', () => {
         cleanupPrintInfoBlock();
-        clearPrintFit();
+        clearPrintSheets();
         if (lastPrintScale <= PRINT_MIN_SCALE) {
             showToast(
-                'Your drawing is wider than one page, so it was printed at the smallest readable size. Moving components closer together will print larger.',
+                'One or more pages are wider than the sheet, so they were printed at the smallest readable size. Moving components closer together will print larger.',
                 'warning',
                 7000
             );
@@ -540,6 +746,7 @@ export function setupCanvas(app) {
         drawingCanvas.addEventListener('drop', (e) => {
             e.preventDefault();
             if (draggedPaletteItem) {
+                if (isGridLineDrawing) setDrawMode(false); // adding an object reads as "done drawing", not "draw to it"
                 const type = e.dataTransfer.getData('text/plain');
                 const imgSrc = e.dataTransfer.getData('image-src');
                 const coords = getCanvasCoordinates(e);
@@ -1285,6 +1492,12 @@ export function setupCanvas(app) {
         let isDragging = false, dragStartX, dragStartY;
         let groupDragData = null;
         let groupLineDragData = null;
+        // Was draw-line mode armed when this gesture started? A component
+        // is always draggable/clickable as normal, draw mode or not - the
+        // difference is only that armed mode exits once the gesture resolves
+        // into a real drag (moving it) or a plain click (selecting it),
+        // since either one reads as "I want this object", not "draw a line".
+        let startedWhileArmed = false;
         function onMouseMove(e) {
             if (!isDragging) {
                 // Check drag threshold
@@ -1295,6 +1508,7 @@ export function setupCanvas(app) {
                     isDragging = true;
                     target.style.zIndex = 1000;
                     document.body.style.userSelect = 'none';
+                    if (startedWhileArmed) setDrawMode(false);
                 } else {
                     return;
                 }
@@ -1331,7 +1545,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.12').then(mod => {
+                    import('./connections.js?v=1.19').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1349,17 +1563,21 @@ export function setupCanvas(app) {
                 }
                 doAutosave(app);
                 saveState(); // Save after move
+            } else if (startedWhileArmed) {
+                // A plain click (no real drag) on a component while armed:
+                // reads as "select this object", not "draw a line from it".
+                setDrawMode(false);
             }
+            startedWhileArmed = false;
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         }
         target.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return; // Only left mouse button
-            // While armed, the canvas owns the click: don't select or drag
-            // components, and stay in draw mode. The event still bubbles to
-            // #drawing-canvas, so a line can start on top of a component.
-            // Esc, right-click, L or the button exit the mode.
-            if (isGridLineDrawing) return;
+            // A component is always draggable/clickable, draw mode or not -
+            // see onMouseMove/onMouseUp above for how armed mode exits once
+            // the gesture resolves into a move or a click.
+            startedWhileArmed = isGridLineDrawing;
             // Only change selection if you click an unselected object
             if (!isDragging) {
                 if (!selectedObjects.has(target)) {
@@ -1487,6 +1705,11 @@ export function setupCanvas(app) {
     // Start drawing a line
     function handleCanvasMouseDown(e) {
         if (!isGridLineDrawing) return;
+        // Lines only start from empty canvas. A mousedown that landed on a
+        // component is a move-or-exit gesture instead (see makeDraggable) -
+        // an existing line can still end ON a component via the
+        // findNearestObject snap below, just not start by clicking one.
+        if (e.target.closest('.canvas-item')) return;
         const pos = getClampedCanvasMousePos(e);
         const snappedStart = snapToGrid(pos.x, pos.y);
         isDrawingLine = true;
@@ -1558,7 +1781,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.12').then(mod => {
+        import('./connections.js?v=1.19').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1632,7 +1855,7 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.19').then(mod => mod.clearLineSelection());
         // Hide text box properties panel when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -1643,7 +1866,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.19').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1654,7 +1877,7 @@ export function setupCanvas(app) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => obj.remove());
             selectedObjects.clear();
-            import('./connections.js?v=1.12').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.19').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1727,7 +1950,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.12').then(mod => {
+            import('./connections.js?v=1.19').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -1754,7 +1977,7 @@ export function setupCanvas(app) {
         const state = getSerializableCanvasState();
         undoStack.push(JSON.parse(JSON.stringify(state)));
         if (undoStack.length > MAX_HISTORY_SIZE) undoStack.shift();
-        redoStack = [];
+        redoStack.length = 0; // truncate in place: pageHistories keeps a reference to this array
         updateUndoRedoButtons();
         doAutosave(app);
     }
@@ -1764,9 +1987,7 @@ export function setupCanvas(app) {
             const currentState = undoStack.pop();
             redoStack.push(currentState);
             const prevState = undoStack[undoStack.length - 1];
-            if (window.app && window.app.loadSchematicData) {
-                window.app.loadSchematicData(prevState);
-            }
+            renderPageContent(prevState);
         }
         updateUndoRedoButtons();
     }
@@ -1775,9 +1996,7 @@ export function setupCanvas(app) {
         if (redoStack.length > 0) {
             const stateToRestore = redoStack.pop();
             undoStack.push(stateToRestore);
-            if (window.app && window.app.loadSchematicData) {
-                window.app.loadSchematicData(stateToRestore);
-            }
+            renderPageContent(stateToRestore);
         }
         updateUndoRedoButtons();
     }
@@ -1830,43 +2049,45 @@ export function setupCanvas(app) {
     if (salespersonInput) salespersonInput.addEventListener('input', () => doAutosave(app));
     if (quoteReferenceInput) quoteReferenceInput.addEventListener('input', () => doAutosave(app));
 
+    // "Today" button next to the date field
+    const formDateTodayBtn = document.getElementById('formDateTodayBtn');
+    if (formDateTodayBtn && dateInput) {
+        formDateTodayBtn.addEventListener('click', () => {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            dateInput.value = `${yyyy}-${mm}-${dd}`;
+            dateInput.dispatchEvent(new Event('input', { bubbles: true })); // triggers the autosave listener above
+        });
+    }
+
     // --- Initialize undo stack with initial state ---
     saveState();
+    pageHistories[pages[activePageIndex].id] = { undo: undoStack, redo: redoStack };
 
     // --- Real loader for undo/redo and schematic load ---
-    async function realLoadSchematicData(data) {
-        console.debug('[realLoadSchematicData] called with:', data);
-        if (data && data.items) {
-            console.debug('[realLoadSchematicData] items:', data.items);
-        }
-        window._restoringFromAutosave = false;
+    /**
+     * Rebuild the live canvas from one page's data: items, connections, grid
+     * lines and rectangles. Shared by undo/redo, tab switching and the
+     * per-page print rendering below - none of those touch project details,
+     * which are shared across pages and handled separately.
+     */
+    async function renderPageContent(pageData) {
+        console.debug('[renderPageContent] called with:', pageData);
         isRestoring = true;
-        if (!data) { isRestoring = false; return; }
+        if (!pageData) { isRestoring = false; return; }
         // Clear all objects
-        const drawingCanvas = document.getElementById('drawing-canvas');
-        const svgOverlay = document.getElementById('svg-overlay');
         if (drawingCanvas) {
             Array.from(drawingCanvas.querySelectorAll('.canvas-item')).forEach(el => el.remove());
         }
         if (svgOverlay) {
             svgOverlay.innerHTML = '';
         }
-        // Restore project details
-        if (data.projectDetails) {
-            const projectNameInput = document.getElementById('formProjectName');
-            const dateInput = document.getElementById('formDate');
-            const versionInput = document.getElementById('formVersion');
-            const salespersonInput = document.getElementById('formSalesman');
-            const quoteReferenceInput = document.getElementById('formQuoteReference');
-            if (projectNameInput) projectNameInput.value = data.projectDetails.projectName || '';
-            if (dateInput) dateInput.value = data.projectDetails.date || '';
-            if (versionInput) versionInput.value = data.projectDetails.version || '';
-            if (salespersonInput) salespersonInput.value = data.projectDetails.salesperson || '';
-            if (quoteReferenceInput) quoteReferenceInput.value = data.projectDetails.quoteReference || '';
-        }
+        drawnRects = [];
         // Restore objects
-        if (data.items && drawingCanvas) {
-            data.items.forEach(item => {
+        if (pageData.items && drawingCanvas) {
+            pageData.items.forEach(item => {
                 if (!item) return;
                 if (typeof item.x !== 'number' || typeof item.y !== 'number') return;
                 if (item.type === 'TextBox') {
@@ -1891,14 +2112,14 @@ export function setupCanvas(app) {
             });
         }
         // Restore lines
-        if (data.connections && svgOverlay) {
-            const mod = await import('./connections.js?v=1.12');
-            mod.setConnections(data.connections);
+        if (svgOverlay) {
+            const mod = await import('./connections.js?v=1.19');
+            mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
         // Restore grid lines
-        if (data.gridLines && svgOverlay) {
-            data.gridLines.forEach(line => {
+        if (pageData.gridLines && svgOverlay) {
+            pageData.gridLines.forEach(line => {
                 const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 gridLine.setAttribute('x1', line.x1);
                 gridLine.setAttribute('y1', line.y1);
@@ -1910,17 +2131,233 @@ export function setupCanvas(app) {
                 svgOverlay.appendChild(gridLine);
             });
         }
+        // Restore hand-drawn rectangles
+        if (Array.isArray(pageData.rectangles) && svgOverlay) {
+            drawnRects = pageData.rectangles.slice();
+            drawnRects.forEach(r => {
+                const rectSvg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rectSvg.setAttribute('x', r.x);
+                rectSvg.setAttribute('y', r.y);
+                rectSvg.setAttribute('width', r.width);
+                rectSvg.setAttribute('height', r.height);
+                rectSvg.setAttribute('stroke', '#333');
+                rectSvg.setAttribute('stroke-width', '2');
+                rectSvg.setAttribute('fill', 'none');
+                rectSvg.setAttribute('stroke-dasharray', '6,4');
+                rectSvg.setAttribute('class', 'canvas-rect');
+                svgOverlay.appendChild(rectSvg);
+            });
+        }
         // Deselect everything
-        if (window.app && window.app.clearSelection) window.app.clearSelection();
+        if (typeof clearSelection === 'function') clearSelection();
         // Update undo/redo buttons
         if (typeof updateUndoRedoButtons === 'function') updateUndoRedoButtons();
         isRestoring = false;
+        // A loaded page may extend past the page guide, growing the canvas.
+        if (typeof window._renderGrid === 'function') window._renderGrid();
         // Update DPU and circuit displays after loading is complete
         setTimeout(() => {
             updateDPUDisplay();
             updateCircuitDisplay();
         }, 200);
     }
+
+    /**
+     * File-level load: an entire saved document (project details plus every
+     * page). Handles both the current multi-page format and files saved
+     * before tabs existed, which land entirely on a single "Tab 1".
+     */
+    async function realLoadSchematicData(data) {
+        console.debug('[realLoadSchematicData] called with:', data);
+        window._restoringFromAutosave = false;
+        if (!data) return;
+
+        // Restore shared project details
+        if (data.projectDetails) {
+            const projectNameInput = document.getElementById('formProjectName');
+            const dateInput = document.getElementById('formDate');
+            const versionInput = document.getElementById('formVersion');
+            const salespersonInput = document.getElementById('formSalesman');
+            const quoteReferenceInput = document.getElementById('formQuoteReference');
+            if (projectNameInput) projectNameInput.value = data.projectDetails.projectName || '';
+            if (dateInput) dateInput.value = data.projectDetails.date || '';
+            if (versionInput) versionInput.value = data.projectDetails.version || '';
+            if (salespersonInput) salespersonInput.value = data.projectDetails.salesperson || '';
+            if (quoteReferenceInput) quoteReferenceInput.value = data.projectDetails.quoteReference || '';
+        }
+
+        if (Array.isArray(data.pages) && data.pages.length > 0) {
+            pages = data.pages.map((p, i) => ({
+                id: p.id || makePageId(),
+                name: p.name || `Tab ${i + 1}`,
+                items: Array.isArray(p.items) ? p.items : [],
+                connections: Array.isArray(p.connections) ? p.connections : [],
+                gridLines: Array.isArray(p.gridLines) ? p.gridLines : [],
+                rectangles: Array.isArray(p.rectangles) ? p.rectangles : []
+            }));
+            activePageIndex = Number.isInteger(data.activePageIndex) && data.activePageIndex >= 0 && data.activePageIndex < pages.length
+                ? data.activePageIndex : 0;
+        } else {
+            // A file saved before tabs existed (or a bare {items,...} object):
+            // everything it has goes on a single "Tab 1".
+            pages = [{
+                id: makePageId(),
+                name: 'Tab 1',
+                items: Array.isArray(data.items) ? data.items : [],
+                connections: Array.isArray(data.connections) ? data.connections : [],
+                gridLines: Array.isArray(data.gridLines) ? data.gridLines : [],
+                rectangles: Array.isArray(data.rectangles) ? data.rectangles : []
+            }];
+            activePageIndex = 0;
+        }
+        pageHistories = {};
+
+        await renderPageContent(pages[activePageIndex]);
+        renderTabBar();
+
+        // Seed a fresh undo baseline for the freshly-loaded active page.
+        const id = pages[activePageIndex].id;
+        pageHistories[id] = { undo: [JSON.parse(JSON.stringify(getSerializableCanvasState()))], redo: [] };
+        undoStack = pageHistories[id].undo;
+        redoStack = pageHistories[id].redo;
+        updateUndoRedoButtons();
+    }
+
+    /** Persist the live canvas into the active page and stash its history. */
+    function persistActivePage() {
+        const current = pages[activePageIndex];
+        if (!current) return;
+        pages[activePageIndex] = { ...current, ...getSerializableCanvasState() };
+        pageHistories[current.id] = { undo: undoStack, redo: redoStack };
+    }
+
+    /** Make page `index` active: swap in its history and render its content. */
+    async function activatePage(index) {
+        activePageIndex = index;
+        const target = pages[activePageIndex];
+        if (!pageHistories[target.id]) {
+            pageHistories[target.id] = { undo: [JSON.parse(JSON.stringify(target))], redo: [] };
+        }
+        undoStack = pageHistories[target.id].undo;
+        redoStack = pageHistories[target.id].redo;
+        await renderPageContent(target);
+        renderTabBar();
+        doAutosave(app);
+    }
+
+    function switchToPage(index) {
+        if (index === activePageIndex || !pages[index]) return;
+        persistActivePage();
+        activatePage(index);
+    }
+
+    function addPage() {
+        persistActivePage();
+        pages.push(makeBlankPage(`Tab ${pages.length + 1}`));
+        activatePage(pages.length - 1);
+    }
+
+    function renamePage(index, name) {
+        if (!pages[index]) return;
+        const trimmed = (name || '').trim();
+        pages[index].name = trimmed || pages[index].name;
+        renderTabBar();
+        doAutosave(app);
+    }
+
+    async function deletePage(index) {
+        if (pages.length <= 1 || !pages[index]) return;
+        const confirmed = await showConfirm({
+            title: 'Delete this tab?',
+            message: `"${pages[index].name}" and everything drawn on it will be deleted. This can't be undone.`,
+            confirmLabel: 'Delete',
+            danger: true
+        });
+        if (!confirmed) return;
+        const removedId = pages[index].id;
+        const wasActive = index === activePageIndex;
+        pages.splice(index, 1);
+        delete pageHistories[removedId];
+        if (wasActive) {
+            await activatePage(Math.min(index, pages.length - 1));
+        } else {
+            if (index < activePageIndex) activePageIndex -= 1;
+            renderTabBar();
+            doAutosave(app);
+        }
+    }
+
+    /** Build the DOM structure for the page-tabs bar. */
+    function renderTabBar() {
+        const bar = document.getElementById('pageTabsBar');
+        if (!bar) return;
+        bar.innerHTML = '';
+        pages.forEach((page, i) => {
+            const tab = document.createElement('div');
+            tab.className = 'page-tab' + (i === activePageIndex ? ' active' : '');
+
+            const label = document.createElement('span');
+            label.className = 'page-tab-label';
+            label.textContent = page.name;
+            label.title = 'Double-click to rename';
+            label.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'page-tab-label-input';
+                input.value = page.name;
+                label.replaceWith(input);
+                input.focus();
+                input.select();
+                // Removing `input` (done by both paths below) blurs it as a
+                // side effect, which would otherwise re-trigger `commit` after
+                // `cancel` already ran. `done` makes each path fire once.
+                let done = false;
+                const commit = () => { if (done) return; done = true; renamePage(i, input.value); };
+                const cancel = () => { if (done) return; done = true; renderTabBar(); };
+                input.addEventListener('blur', commit);
+                input.addEventListener('keydown', (ke) => {
+                    if (ke.key === 'Enter') { ke.preventDefault(); input.blur(); }
+                    if (ke.key === 'Escape') { ke.preventDefault(); cancel(); }
+                });
+            });
+            tab.appendChild(label);
+
+            if (pages.length > 1) {
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'page-tab-close';
+                close.innerHTML = '&times;';
+                close.title = 'Delete tab';
+                close.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deletePage(i);
+                });
+                tab.appendChild(close);
+            }
+
+            tab.addEventListener('click', () => switchToPage(i));
+            bar.appendChild(tab);
+        });
+
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'page-tab-add';
+        addBtn.title = 'Add page';
+        addBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
+        addBtn.addEventListener('click', addPage);
+        bar.appendChild(addBtn);
+    }
+
+    app.tabs = {
+        getPages: () => pages.map(p => ({ id: p.id, name: p.name })),
+        getActiveIndex: () => activePageIndex,
+        switchTo: switchToPage,
+        add: addPage,
+        rename: renamePage,
+        remove: deletePage
+    };
+    renderTabBar();
 
     // --- Marquee Selection ---
     let marqueeDiv = null;
@@ -2024,7 +2461,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.12').then(mod => {
+                    import('./connections.js?v=1.19').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2046,7 +2483,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.19').then(mod => mod.clearLineSelection());
             }
         });
     }
@@ -2192,37 +2629,6 @@ export function setupCanvas(app) {
         window.removeEventListener('mouseup', onRectMouseUp);
         saveState();
     }
-
-    // --- Patch realLoadSchematicData to restore rectangles ---
-    const originalRealLoadSchematicData = realLoadSchematicData;
-    realLoadSchematicData = async function(data) {
-        await originalRealLoadSchematicData(data);
-        // Restore rectangles
-        drawnRects = (data.rectangles && Array.isArray(data.rectangles)) ? data.rectangles.slice() : [];
-        // Remove any existing SVG rects
-        if (svgOverlay) {
-            Array.from(svgOverlay.querySelectorAll('.canvas-rect')).forEach(r => r.remove());
-            // Redraw all rectangles
-            drawnRects.forEach(r => {
-                const rectSvg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rectSvg.setAttribute('x', r.x);
-                rectSvg.setAttribute('y', r.y);
-                rectSvg.setAttribute('width', r.width);
-                rectSvg.setAttribute('height', r.height);
-                rectSvg.setAttribute('stroke', '#333');
-                rectSvg.setAttribute('stroke-width', '2');
-                rectSvg.setAttribute('fill', 'none');
-                rectSvg.setAttribute('stroke-dasharray', '6,4');
-                rectSvg.setAttribute('class', 'canvas-rect');
-                svgOverlay.appendChild(rectSvg);
-            });
-        }
-        // Update DPU and circuit displays after loading is complete
-        setTimeout(() => {
-            updateDPUDisplay();
-            updateCircuitDisplay();
-        }, 200);
-    };
 
     function getCurrentSelectedBox() {
         // Return the first selected object that is a box
