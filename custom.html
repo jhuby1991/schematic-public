@@ -1199,7 +1199,7 @@
             pointer-events: none;
             z-index: 6;
             font-family: Avenir, Arial, sans-serif;
-            transition: opacity .25s ease;
+            transition: opacity .25s ease, top .25s ease;
             max-width: 340px;
         }
         @media print { #canvasEmptyState { display: none !important; } }
@@ -1865,7 +1865,7 @@
               </ul>
             </div>
         </div>
-        <div>
+        <div id="toolbarRightGroup">
             <button id="saveToFileBtn" class="btn btn-primary btn-sm" title="Save to File"><i class="bi bi-download"></i> Save File</button>
             <button id="loadFromFileBtn" class="btn btn-secondary btn-sm" title="Load from File"><i class="bi bi-upload"></i> Load File</button>
             <button id="saveSchematicBtn" class="btn btn-success btn-sm" title="Save Schematic (Local)" style="display: none;"><i class="bi bi-save"></i> Quick Save</button>
@@ -1881,7 +1881,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.18</span>
+                <span class="app-version" title="Tool version">v1.19</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2220,6 +2220,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.18"></script>
+    <script type="module" src="main.js?v=1.19"></script>
 </body>
 </html>
