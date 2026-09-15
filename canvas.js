@@ -1,10 +1,10 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.12';
-import { doAutosave } from './storage.js?v=1.12';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.12';
-import { showToast, showConfirm } from './utils.js?v=1.12';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.13';
+import { doAutosave } from './storage.js?v=1.13';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.13';
+import { showToast, showConfirm } from './utils.js?v=1.13';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -316,7 +316,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.12').then(mod => {
+                import('./connections.js?v=1.13').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -554,6 +554,25 @@ export function setupCanvas(app) {
         return sheet;
     }
 
+    /**
+     * Wait for every <img> in `container` to finish loading (or fail), up to
+     * `timeoutMs`. cloneNode() copies <img> tags as-is; it doesn't wait for
+     * them, so without this a slow-loading component image (a real CDN, not
+     * localhost) could still be mid-fetch when window.print() captures the
+     * page, showing up cut off / partially rendered.
+     */
+    function waitForImages(container, timeoutMs = 4000) {
+        const pending = Array.from(container.querySelectorAll('img')).filter(img => !img.complete);
+        if (pending.length === 0) return Promise.resolve();
+        return Promise.race([
+            Promise.all(pending.map(img => new Promise(resolve => {
+                img.addEventListener('load', resolve, { once: true });
+                img.addEventListener('error', resolve, { once: true }); // don't hang printing on one broken image
+            }))),
+            new Promise(resolve => setTimeout(resolve, timeoutMs))
+        ]);
+    }
+
     function getPrintSheetsContainer() {
         let container = document.getElementById('printSheetsContainer');
         if (!container) {
@@ -586,6 +605,7 @@ export function setupCanvas(app) {
                 container.appendChild(buildPrintSheet(pages[i].name, i + 1, pages.length));
             }
 
+            await waitForImages(container); // let every sheet's component images finish loading first
             await renderPageContent(pages[originalIndex]);
         } finally {
             isBuildingPrintSheets = false;
@@ -1468,7 +1488,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.12').then(mod => {
+                    import('./connections.js?v=1.13').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1695,7 +1715,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.12').then(mod => {
+        import('./connections.js?v=1.13').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1769,7 +1789,7 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.13').then(mod => mod.clearLineSelection());
         // Hide text box properties panel when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -1780,7 +1800,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.13').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1791,7 +1811,7 @@ export function setupCanvas(app) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => obj.remove());
             selectedObjects.clear();
-            import('./connections.js?v=1.12').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.13').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1864,7 +1884,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.12').then(mod => {
+            import('./connections.js?v=1.13').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2014,7 +2034,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.12');
+            const mod = await import('./connections.js?v=1.13');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2362,7 +2382,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.12').then(mod => {
+                    import('./connections.js?v=1.13').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2384,7 +2404,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.12').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.13').then(mod => mod.clearLineSelection());
             }
         });
     }
