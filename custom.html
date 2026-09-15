@@ -1695,12 +1695,11 @@
 
         /* ---- Canvas chrome (screen only) ---- */
         /* Draw-line mode: the cursor is the mode indicator, the way it is in
-           CAD. Overrides the per-element cursors while armed. */
-        #drawing-canvas.draw-mode,
-        #drawing-canvas.draw-mode .canvas-component,
-        #drawing-canvas.draw-mode .canvas-text-box,
-        #drawing-canvas.draw-mode .canvas-shape,
-        #drawing-canvas.draw-mode .canvas-item { cursor: crosshair; }
+           CAD - but only over empty canvas, where a click starts a line. A
+           click on an object exits draw mode instead of drawing from it (see
+           handleWindowMouseUp in canvas.js), so hovering one shows its
+           normal cursor (move), not crosshair, to match. */
+        #drawing-canvas.draw-mode { cursor: crosshair; }
         #pdf-page-guide { border-color: rgba(0, 0, 0, 0.38); }
         .canvas-component.selected,
         .canvas-text-box.selected,
@@ -1867,7 +1866,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.15</span>
+                <span class="app-version" title="Tool version">v1.16</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2203,6 +2202,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.15"></script>
+    <script type="module" src="main.js?v=1.16"></script>
 </body>
 </html>
