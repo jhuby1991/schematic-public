@@ -264,12 +264,98 @@
             box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
         }
 
+        #canvas-column {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+        }
+        #canvas-column #drawing-canvas-wrapper {
+            flex: 1 1 auto;
+            min-height: 0;
+            height: auto;
+        }
         #drawing-canvas-wrapper {
             position: relative;
             width: 100%;
             height: 100%;
             overflow: auto;
             background: #fff;
+        }
+        #pageTabsBar {
+            display: flex;
+            align-items: stretch;
+            gap: 2px;
+            flex: 0 0 auto;
+            background: var(--rako-panel);
+            border-bottom: 1px solid var(--rako-line-dk);
+            padding: 4px 4px 0;
+            overflow-x: auto;
+        }
+        .page-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: #fff;
+            border: 1px solid var(--rako-line-dk);
+            border-bottom: none;
+            border-radius: 2px 2px 0 0;
+            font-size: 0.82rem;
+            color: var(--rako-text-muted);
+            cursor: pointer;
+            white-space: nowrap;
+            user-select: none;
+        }
+        .page-tab.active {
+            color: var(--rako-text);
+            font-weight: 600;
+            box-shadow: inset 0 2px 0 var(--rako-accent);
+        }
+        .page-tab:hover:not(.active) {
+            background: #F4F4F4;
+        }
+        .page-tab-label-input {
+            font-size: 0.82rem;
+            border: 1px solid var(--rako-accent);
+            border-radius: 2px;
+            padding: 1px 4px;
+            width: 90px;
+        }
+        .page-tab-close {
+            border: none;
+            background: transparent;
+            color: var(--rako-text-muted);
+            line-height: 1;
+            padding: 0 2px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+        .page-tab-close:hover {
+            background: rgba(0,0,0,0.08);
+            color: var(--rako-text);
+        }
+        .page-tab-add {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            align-self: center;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--rako-text-muted);
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+        .page-tab-add:hover {
+            background: #E4E4E4;
+            color: var(--rako-text);
+        }
+        #printSheetsContainer {
+            display: none;
         }
         #drawing-canvas {
             position: absolute;
@@ -651,44 +737,61 @@
                 background: #fff !important;
                 border-radius: 30px;
             }
-            #palette, .toolbar, #pdf-page-guide, #project-details, #schematicTitleDisplay, #drawing-toolbar, #text-box-properties-panel, #left-column {
+            #palette, .toolbar, #pdf-page-guide, #project-details, #schematicTitleDisplay, #drawing-toolbar, #text-box-properties-panel, #left-column, #pageTabsBar {
                 display: none !important;
             }
 
+            /* The interactive editor is never what gets printed - printing
+               builds one .print-sheet per page/tab into #printSheetsContainer
+               (see buildPrintSheets in canvas.js) and prints that instead. */
             .main-content {
-                margin:0 !important;
-                gap: 0 !important;
-                padding: 0.25cm !important; 
-                box-sizing: border-box !important;
-                height: 100% !important;
-                width: 100% !important;
-                display: flex !important;
-                flex-direction: column !important; 
+                display: none !important;
             }
 
-            #drawing-canvas-wrapper {
-                border: none !important;
-                width: 100% !important;
-                height: calc(100% - 4.5cm - 1cm) !important; 
-                overflow: hidden !important;
-                flex-grow: 1; 
-                position: relative; 
+            #printSheetsContainer {
+                /* display:contents - not block - so this wrapper generates no
+                   box of its own; its .print-sheet children paginate as if
+                   they were direct children of body. A block box here, even
+                   empty, was enough to push everything onto a spurious extra
+                   trailing page in Chromium's print pagination. */
+                display: contents !important;
             }
-            #drawing-canvas {
-                background-image: none !important; 
-                transform: var(--print-transform, none) !important; 
-                position:absolute !important; 
-                top:0 !important; left:0 !important;
+            .print-sheet {
+                position: relative;
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+                page-break-after: always;
+                break-after: page;
             }
-            #svg-overlay {
+            .print-sheet:last-child {
+                page-break-after: auto;
+                break-after: auto;
+            }
+            .print-sheet .ps-canvas {
+                background-image: none !important;
+                position: absolute !important;
+                top: 0 !important; left: 0 !important;
+                /* transform is set inline per sheet, to fit that page's content */
+            }
+            .print-sheet .ps-canvas #svg-overlay {
                 /* #svg-overlay is a DOM child of #drawing-canvas, so it already
-                   inherits the parent's print-transform visually. Applying the
-                   same transform here too would compound it (scale squared,
-                   translate skewed), pushing lines to the wrong place. */
-                position:absolute !important;
-                top:0 !important; left:0 !important;
+                   inherits the parent's transform visually. Giving it its own
+                   too would compound it (scale squared, translate skewed),
+                   pushing lines to the wrong place. */
+                position: absolute !important;
+                top: 0 !important; left: 0 !important;
             }
-           
+            .print-sheet-tag {
+                position: absolute;
+                top: 0.3cm;
+                left: 0.75cm;
+                font-size: 8pt;
+                color: #555;
+                font-family: Avenir, Arial, sans-serif;
+                z-index: 10000;
+            }
+
             .canvas-component {
                 border: none !important;
                 transform: var(--print-translate, translateY(0)) scale(var(--component-print-scale));
@@ -1086,6 +1189,11 @@
         @media print {
             #print-connector-legend {
                 border: none !important;
+                /* position:fixed repeats this legend on every printed page,
+                   the same way #print-info-block-content.print-visible does
+                   for the title block below - it's static, shared content,
+                   not tied to any one page's drawing. */
+                position: fixed !important;
             }
         }
 
@@ -1977,15 +2085,20 @@
             </div>
         </div>
 
-        <div id="drawing-canvas-wrapper">
-            <div id="drawing-canvas">
-                <svg id="grid-svg"></svg>
-                <div id="pdf-page-guide"></div>
-                <div id="schematicTitleDisplay"></div>
-                <svg id="svg-overlay"></svg>
+        <div id="canvas-column">
+            <div id="pageTabsBar"></div>
+            <div id="drawing-canvas-wrapper">
+                <div id="drawing-canvas">
+                    <svg id="grid-svg"></svg>
+                    <div id="pdf-page-guide"></div>
+                    <div id="schematicTitleDisplay"></div>
+                    <svg id="svg-overlay"></svg>
+                </div>
             </div>
         </div>
     </div>
+
+    <div id="printSheetsContainer"></div>
 
     <div id="print-info-block-template">
         <div id="pdfInfoRow">

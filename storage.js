@@ -103,12 +103,15 @@ export function setupStorage(app) {
 
     // --- Print ---
     if (printSchematicBtn) {
-        printSchematicBtn.addEventListener('click', () => {
+        printSchematicBtn.addEventListener('click', async () => {
             // Set document.title to project name and version for print file name
             const originalTitle = document.title;
             const projectName = (projectNameInput?.value || 'schematic').replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
             const version = versionInput?.value ? `_v${versionInput.value.replace(/[^a-z0-9_.-]/gi, '_')}` : '';
             document.title = `${projectName}${version}`;
+            if (window.app && typeof window.app.printAllPages === 'function') {
+                await window.app.printAllPages();
+            }
             window.print();
             // Restore original title after a short delay
             setTimeout(() => { document.title = originalTitle; }, 1000);
