@@ -680,8 +680,11 @@
                 position:absolute !important; 
                 top:0 !important; left:0 !important;
             }
-            #svg-overlay { 
-                transform: var(--print-transform, none) !important; 
+            #svg-overlay {
+                /* #svg-overlay is a DOM child of #drawing-canvas, so it already
+                   inherits the parent's print-transform visually. Applying the
+                   same transform here too would compound it (scale squared,
+                   translate skewed), pushing lines to the wrong place. */
                 position:absolute !important;
                 top:0 !important; left:0 !important;
             }
