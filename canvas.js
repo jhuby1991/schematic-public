@@ -1,10 +1,11 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.26';
-import { doAutosave } from './storage.js?v=1.26';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.26';
-import { showToast, showConfirm } from './utils.js?v=1.26';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.30';
+import { doAutosave } from './storage.js?v=1.30';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.30';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.30';
+import { showToast, showConfirm } from './utils.js?v=1.30';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -80,8 +81,8 @@ function getSerializableCanvasState() {
     const items = [];
     // Save all generic wrappers and non-textbox canvas items
     Array.from(drawingCanvas.children).forEach(child => {
-        // Skip text boxes (handled separately below)
-        if (child.classList && child.classList.contains('canvas-text-box')) return;
+        // Skip text boxes and icons (handled separately below)
+        if (child.classList && (child.classList.contains('canvas-text-box') || child.classList.contains('canvas-icon'))) return;
         // Generic wrapper: absolutely positioned, contains a .canvas-item child
         if (child.style.position === 'absolute' && child.querySelector('.canvas-item')) {
             const obj = child.querySelector('.canvas-item');
@@ -121,17 +122,30 @@ function getSerializableCanvasState() {
     });
     // Save all text boxes
     Array.from(drawingCanvas.querySelectorAll('.canvas-text-box')).forEach(box => {
-        const input = box.querySelector('input');
+        const editable = box.querySelector('.text-editable');
         items.push({
             type: 'TextBox',
             id: box.id,
             x: parseInt(box.style.left, 10) || 0,
             y: parseInt(box.style.top, 10) || 0,
-            text: input ? input.value : '',
-            fontSize: input ? parseInt(input.style.fontSize, 10) || 12 : 12,
-            hasBackground: box.style.backgroundColor !== 'transparent',
-            isBold: input ? input.style.fontWeight === 'bold' : false,
-            isUnderlined: input ? input.style.textDecoration === 'underline' : false
+            width: parseInt(box.style.width, 10) || 200,
+            html: editable ? editable.innerHTML : '',
+            text: editable ? editable.innerText : '',
+            fontSize: editable ? parseInt(editable.style.fontSize, 10) || 12 : 12,
+            hasBackground: box.style.backgroundColor !== 'transparent'
+        });
+    });
+    // Save all icons
+    Array.from(drawingCanvas.querySelectorAll('.canvas-icon')).forEach(iconEl => {
+        const glyph = iconEl.querySelector('.material-symbols-outlined');
+        items.push({
+            type: 'Icon',
+            id: iconEl.id,
+            x: parseInt(iconEl.style.left, 10) || 0,
+            y: parseInt(iconEl.style.top, 10) || 0,
+            iconName: iconEl.dataset.iconName,
+            size: glyph ? parseInt(glyph.style.fontSize, 10) || 28 : 28,
+            color: glyph ? glyph.style.color : '#1A1A1A'
         });
     });
     // Collect all lines
@@ -269,9 +283,14 @@ export function setupCanvas(app) {
 
     // --- Keyboard Shortcuts for Connector Colour ---
     document.addEventListener('keydown', function(e) {
-        // Fix: Allow spacebar and shortcuts in input fields
-        const tag = document.activeElement && document.activeElement.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        // Allow spacebar and shortcuts in input fields, textareas, and any
+        // contenteditable (text box labels, generic component labels) -
+        // otherwise typing an ordinary label steals keystrokes as app
+        // shortcuts (most visibly 'l' and Space, which are also Draw Line
+        // toggles here).
+        const active = document.activeElement;
+        const tag = active && active.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (active && active.isContentEditable)) return;
         switch (e.key.toLowerCase()) {
             case 'q':
                 currentLineType = 'colour';
@@ -316,7 +335,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.26').then(mod => {
+                import('./connections.js?v=1.30').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -739,7 +758,14 @@ export function setupCanvas(app) {
     const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
     const textBoxFontSizeInput = document.getElementById('textBoxFontSize');
     const textBoxBoldBtn = document.getElementById('textBoxBoldBtn');
+    const textBoxItalicBtn = document.getElementById('textBoxItalicBtn');
     const textBoxUnderlineBtn = document.getElementById('textBoxUnderlineBtn');
+    const textBoxColorInput = document.getElementById('textBoxColorInput');
+    const textBoxAlignLeftBtn = document.getElementById('textBoxAlignLeftBtn');
+    const textBoxAlignCenterBtn = document.getElementById('textBoxAlignCenterBtn');
+    const textBoxAlignRightBtn = document.getElementById('textBoxAlignRightBtn');
+    const textBoxBulletListBtn = document.getElementById('textBoxBulletListBtn');
+    const textBoxNumberListBtn = document.getElementById('textBoxNumberListBtn');
     const textBoxToggleBackgroundInput = document.getElementById('textBoxToggleBackground');
     // State for text tool
     if (!window.itemsOnCanvas) window.itemsOnCanvas = new Map();
@@ -752,9 +778,32 @@ export function setupCanvas(app) {
         {
             fontSizeInput: textBoxFontSizeInput,
             boldBtn: textBoxBoldBtn,
+            italicBtn: textBoxItalicBtn,
             underlineBtn: textBoxUnderlineBtn,
+            colorInput: textBoxColorInput,
+            alignLeftBtn: textBoxAlignLeftBtn,
+            alignCenterBtn: textBoxAlignCenterBtn,
+            alignRightBtn: textBoxAlignRightBtn,
+            bulletListBtn: textBoxBulletListBtn,
+            numberListBtn: textBoxNumberListBtn,
             toggleBackgroundInput: textBoxToggleBackgroundInput
         },
+        window.itemsOnCanvas,
+        window.selectedItems,
+        makeDraggable,
+        saveState
+    );
+
+    // Icon library (Material Symbols)
+    const iconPropertiesPanel = document.getElementById('icon-properties-panel');
+    const iconSizeInput = document.getElementById('iconSizeInput');
+    const iconColorInput = document.getElementById('iconColorInput');
+    const iconPaletteContent = document.getElementById('icon-palette-content');
+    if (iconPaletteContent) buildIconPalette(iconPaletteContent);
+    initIconTool(
+        drawingCanvas,
+        iconPropertiesPanel,
+        { sizeInput: iconSizeInput, colorInput: iconColorInput },
         window.itemsOnCanvas,
         window.selectedItems,
         makeDraggable,
@@ -764,7 +813,10 @@ export function setupCanvas(app) {
     let draggedPaletteItem = null;
 
     if (palette && drawingCanvas) {
-        palette.querySelectorAll('.palette-item').forEach(item => {
+        // Icon palette tiles wire their own dragstart (icon-name payload) in
+        // buildIconPalette, and are (re)built dynamically as the search
+        // filters, so they're excluded here rather than wired once at setup.
+        palette.querySelectorAll('.palette-item:not(.icon-palette-item)').forEach(item => {
             item.addEventListener('dragstart', (e) => {
                 draggedPaletteItem = item;
                 e.dataTransfer.setData('text/plain', item.dataset.type);
@@ -782,11 +834,23 @@ export function setupCanvas(app) {
 
         drawingCanvas.addEventListener('drop', (e) => {
             e.preventDefault();
+            const type = e.dataTransfer.getData('text/plain');
+            // Icon tiles are rebuilt on every search keystroke (see
+            // buildIconPalette), so they're never covered by the one-time
+            // dragstart wiring above that sets draggedPaletteItem - read the
+            // drag data directly instead of depending on it for this case.
+            if (type === 'Icon') {
+                if (isGridLineDrawing) setDrawMode(false);
+                const iconName = e.dataTransfer.getData('icon-name');
+                const coords = getCanvasCoordinates(e);
+                if (iconName) createIconOnCanvas(iconName, coords.x, coords.y);
+                draggedPaletteItem = null;
+                return;
+            }
             if (draggedPaletteItem) {
                 if (isGridLineDrawing) setDrawMode(false); // adding an object reads as "done drawing", not "draw to it"
-                const type = e.dataTransfer.getData('text/plain');
-                const imgSrc = e.dataTransfer.getData('image-src');
                 const coords = getCanvasCoordinates(e);
+                const imgSrc = e.dataTransfer.getData('image-src');
                 createCanvasObject(type, imgSrc, coords.x, coords.y);
                 draggedPaletteItem = null;
             }
@@ -1582,7 +1646,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.26').then(mod => {
+                    import('./connections.js?v=1.30').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1633,6 +1697,17 @@ export function setupCanvas(app) {
                         const child = target.querySelector('.canvas-item');
                         if (child) child.classList.add('selected');
                     }
+                    // This path selects any draggable target directly, bypassing
+                    // setSelectedObject - text boxes/icons show their own
+                    // properties panel via their own mousedown handler (which
+                    // runs first and leaves them already selected here, so this
+                    // branch is skipped for them), so a fresh selection of
+                    // anything else needs to clear a stale panel left open.
+                    if (window.selectedItems) window.selectedItems.clear();
+                    const staleTextPanel = document.getElementById('text-box-properties-panel');
+                    if (staleTextPanel) staleTextPanel.style.display = 'none';
+                    const staleIconPanel = document.getElementById('icon-properties-panel');
+                    if (staleIconPanel) staleIconPanel.style.display = 'none';
                 }
                 // If already selected, do not change selection (allow group drag)
             }
@@ -1818,7 +1893,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.26').then(mod => {
+        import('./connections.js?v=1.30').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1858,6 +1933,14 @@ export function setupCanvas(app) {
         if (!obj) return;
         obj.classList.add('selected');
         selectedObjects.add(obj);
+        // text.js/icons.js look up the selected item's own data (font size,
+        // colour, etc) by id through this Set - it was never actually
+        // populated anywhere before, so their properties panels could show
+        // but editing them silently did nothing.
+        if (window.selectedItems) {
+            if (!additive) window.selectedItems.clear();
+            window.selectedItems.add(obj.id);
+        }
         // Show text box properties panel if a text box is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (obj.classList.contains('canvas-text-box')) {
@@ -1869,18 +1952,38 @@ export function setupCanvas(app) {
                 if (itemData) {
                     const textBoxFontSizeInput = document.getElementById('textBoxFontSize');
                     const textBoxToggleBackgroundInput = document.getElementById('textBoxToggleBackground');
-                    const textBoxBoldBtn = document.getElementById('textBoxBoldBtn');
-                    const textBoxUnderlineBtn = document.getElementById('textBoxUnderlineBtn');
                     if (textBoxFontSizeInput) textBoxFontSizeInput.value = itemData.fontSize || 12;
                     if (textBoxToggleBackgroundInput) textBoxToggleBackgroundInput.checked = itemData.hasBackground !== false;
-                    if (textBoxBoldBtn) textBoxBoldBtn.classList.toggle('active', !!itemData.isBold);
-                    if (textBoxUnderlineBtn) textBoxUnderlineBtn.classList.toggle('active', !!itemData.isUnderlined);
                 }
             }
         } else {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
         }
+        // Show icon properties panel if an icon is selected
+        const iconPropertiesPanel = document.getElementById('icon-properties-panel');
+        if (obj.classList.contains('canvas-icon')) {
+            if (iconPropertiesPanel) {
+                iconPropertiesPanel.style.display = '';
+                const itemsOnCanvas = window.itemsOnCanvas || new Map();
+                const itemData = itemsOnCanvas.get(obj.id);
+                if (itemData) {
+                    const iconSizeInput = document.getElementById('iconSizeInput');
+                    const iconColorInput = document.getElementById('iconColorInput');
+                    if (iconSizeInput) iconSizeInput.value = itemData.size || 28;
+                    if (iconColorInput) iconColorInput.value = itemData.color || '#1A1A1A';
+                }
+            }
+        } else {
+            if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
+        }
     }
+
+    // text.js and icons.js call window.setSelectedObject to select the item
+    // they just created/clicked, which also shows their properties panel -
+    // makeDraggable's own mousedown handler manages basic drag-selection
+    // directly and doesn't know about either panel, so without this those
+    // panels never appeared even though the class="selected" highlight did.
+    window.setSelectedObject = setSelectedObject;
 
     function clearSelection() {
         selectedObjects.forEach(obj => {
@@ -1892,10 +1995,13 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.26').then(mod => mod.clearLineSelection());
-        // Hide text box properties panel when nothing is selected
+        if (window.selectedItems) window.selectedItems.clear();
+        import('./connections.js?v=1.30').then(mod => mod.clearLineSelection());
+        // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
+        const iconPropertiesPanel = document.getElementById('icon-properties-panel');
+        if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
     }
 
     // Add a click handler to the canvas background to clear selection
@@ -1903,7 +2009,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.26').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.30').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1912,9 +2018,17 @@ export function setupCanvas(app) {
     document.addEventListener('keydown', (e) => {
         // Delete
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            selectedObjects.forEach(obj => obj.remove());
+            selectedObjects.forEach(obj => {
+                if (window.itemsOnCanvas) window.itemsOnCanvas.delete(obj.id);
+                obj.remove();
+            });
             selectedObjects.clear();
-            import('./connections.js?v=1.26').then(mod => mod.deleteSelectedLine());
+            if (window.selectedItems) window.selectedItems.clear();
+            const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
+            if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
+            const iconPropertiesPanel = document.getElementById('icon-properties-panel');
+            if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
+            import('./connections.js?v=1.30').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1987,7 +2101,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.26').then(mod => {
+            import('./connections.js?v=1.30').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2047,7 +2161,8 @@ export function setupCanvas(app) {
 
     // Wire up keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        const isInput = document.activeElement && ['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase());
+        const active = document.activeElement;
+        const isInput = active && (['input', 'textarea'].includes(active.tagName.toLowerCase()) || active.isContentEditable);
         if (isInput) return;
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
             e.preventDefault();
@@ -2131,6 +2246,10 @@ export function setupCanvas(app) {
                     createTextBoxOnCanvas(item.x, item.y, item.text, item.id, true, item);
                     return;
                 }
+                if (item.type === 'Icon') {
+                    createIconOnCanvas(item.iconName, item.x, item.y, item.id, true, item);
+                    return;
+                }
                 const normalizedType = normalizeType(item.type);
                 const obj = createCanvasObject(normalizedType, item.imgSrc, item.x, item.y, item);
                 if (item.labels && obj) {
@@ -2150,7 +2269,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.26');
+            const mod = await import('./connections.js?v=1.30');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2498,7 +2617,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.26').then(mod => {
+                    import('./connections.js?v=1.30').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2520,7 +2639,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.26').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.30').then(mod => mod.clearLineSelection());
             }
         });
     }
