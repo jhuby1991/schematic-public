@@ -1322,8 +1322,15 @@
           #print-connector-legend {
             display: block !important;
           }
+          /* No connector types actually used anywhere in the document -
+             renderPrintConnectorLegend() toggles this rather than an inline
+             style, since a plain inline style can't win against the
+             !important rule directly above. */
+          #print-connector-legend.legend-empty {
+            display: none !important;
+          }
         }
-        
+
         /* Scale rules for new keypads */
         .canvas-component[data-type="RCM"],
         .canvas-component[data-type="RK-EOS"],
@@ -1866,7 +1873,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.25</span>
+                <span class="app-version" title="Tool version">v1.26</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2204,6 +2211,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.25"></script>
+    <script type="module" src="main.js?v=1.26"></script>
 </body>
 </html>

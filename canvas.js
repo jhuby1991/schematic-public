@@ -1,10 +1,10 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.25';
-import { doAutosave } from './storage.js?v=1.25';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.25';
-import { showToast, showConfirm } from './utils.js?v=1.25';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.26';
+import { doAutosave } from './storage.js?v=1.26';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.26';
+import { showToast, showConfirm } from './utils.js?v=1.26';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -316,7 +316,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.25').then(mod => {
+                import('./connections.js?v=1.26').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -440,20 +440,57 @@ export function setupCanvas(app) {
         printInfoBlockContent.classList.add('print-visible');
     }
 
+    // The full set of connector types the legend can show, each keyed by
+    // how it's actually distinguished on a line: 'zone' by its dashed
+    // stroke, everything else by its stroke colour.
+    const CONNECTOR_LEGEND_ITEMS = [
+        { key: 'zone', label: 'Zone', swatch: '<span class="legend-swatch" style="width: 24px; height: 0; border-bottom: 2px dashed #000; margin-right: 5.4px; display: inline-block;"></span>' },
+        { key: 'black', label: 'Default', swatch: '<span class="legend-swatch" style="background:black; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>' },
+        { key: '#007bff', label: 'RJ45', swatch: '<span class="legend-swatch" style="background:#007bff; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>' },
+        { key: '#28a745', label: 'Rako Wired Network', swatch: '<span class="legend-swatch" style="background:#28a745; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>' },
+        { key: 'purple', label: 'DIN Bus', swatch: '<span class="legend-swatch" style="background:purple; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>' },
+        { key: 'red', label: 'DALI', swatch: '<span class="legend-swatch" style="background:red; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>' },
+        { key: 'orange', label: 'RJ11', swatch: '<span class="legend-swatch" style="background:orange; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>' }
+    ];
+
+    // Which connector types actually appear anywhere in the document, across
+    // every page - not just the one on screen - so the printed legend only
+    // lists what was actually used, not every colour the tool supports.
+    function getUsedConnectorKeys() {
+        const used = new Set();
+        const addFrom = (conns) => {
+            (conns || []).forEach(c => used.add(c.type === 'dashed' ? 'zone' : (c.color || 'black')));
+        };
+        pages.forEach((p, i) => {
+            if (i === activePageIndex) {
+                const liveConns = Array.from(document.getElementById('svg-overlay').querySelectorAll('line')).map(line => ({
+                    color: line.getAttribute('stroke'),
+                    type: line.getAttribute('stroke-dasharray') ? 'dashed' : 'colour'
+                }));
+                addFrom(liveConns);
+            } else {
+                addFrom(p.connections);
+            }
+        });
+        return used;
+    }
+
     function renderPrintConnectorLegend() {
         if (!printConnectorLegend) return;
+        const used = getUsedConnectorKeys();
+        const items = CONNECTOR_LEGEND_ITEMS.filter(item => used.has(item.key));
+        if (items.length === 0) {
+            printConnectorLegend.innerHTML = '';
+            printConnectorLegend.classList.add('legend-empty');
+            return;
+        }
+        printConnectorLegend.classList.remove('legend-empty');
+        const spans = items.map(item =>
+            `<span style="display: flex; align-items: center;">${item.swatch}${item.label}</span>`
+        ).join('');
         printConnectorLegend.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 8.1pt; font-weight: normal; padding: 0; margin: 0; background: none; border: none; box-shadow: none; width: 100%; position: relative; top: 0;">
-          <span style="display: flex; align-items: center;">
-  <span class="legend-swatch" style="width: 24px; height: 0; border-bottom: 2px dashed #000; margin-right: 5.4px; display: inline-block;"></span>
-  Zone
-</span>  
-          <span style="display: flex; align-items: center;"><span class="legend-swatch" style="background:black; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>Default</span>
-            <span style="display: flex; align-items: center;"><span class="legend-swatch" style="background:#007bff; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>RJ45</span>
-            <span style="display: flex; align-items: center;"><span class="legend-swatch" style="background:#28a745; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>Rako Wired Network</span>
-            <span style="display: flex; align-items: center;"><span class="legend-swatch" style="background:purple; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>DIN Bus</span>
-            <span style="display: flex; align-items: center;"><span class="legend-swatch" style="background:red; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>DALI</span>
-            <span style="display: flex; align-items: center;"><span class="legend-swatch" style="background:orange; width:12.6px; height:12.6px; border-radius:2px; margin-right:5.4px; border:none; display:inline-block;"></span>RJ11</span>
+            ${spans}
           </div>
         `;
     }
@@ -1545,7 +1582,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.25').then(mod => {
+                    import('./connections.js?v=1.26').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1781,7 +1818,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.25').then(mod => {
+        import('./connections.js?v=1.26').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -1855,7 +1892,7 @@ export function setupCanvas(app) {
             }
         });
         selectedObjects.clear();
-        import('./connections.js?v=1.25').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.26').then(mod => mod.clearLineSelection());
         // Hide text box properties panel when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -1866,7 +1903,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.25').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.26').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -1877,7 +1914,7 @@ export function setupCanvas(app) {
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => obj.remove());
             selectedObjects.clear();
-            import('./connections.js?v=1.25').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.26').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -1950,7 +1987,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.25').then(mod => {
+            import('./connections.js?v=1.26').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2113,7 +2150,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.25');
+            const mod = await import('./connections.js?v=1.26');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2461,7 +2498,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.25').then(mod => {
+                    import('./connections.js?v=1.26').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2483,7 +2520,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.25').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.26').then(mod => mod.clearLineSelection());
             }
         });
     }
