@@ -1,10 +1,11 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.20';
+import { showNotification, showActionBar } from './utils.js?v=1.21';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
+const EMPTY_STATE_KEY = 'rakoSchematicEmptyStateSeen';
 
 /* ------------------------------------------------------------------ *
  * Help
@@ -319,12 +320,19 @@ export function openWelcome(forced = false) {
                 'Click <b>Draw Line</b>, choose a cable colour, then click from one component to the next.') +
         step(3, 'Add your details and print',
                 'Fill in the project fields on the left, then <b>Print Schematic</b> and choose <i>Save as PDF</i>.'),
-        `<div style="margin-top:26px;padding-top:20px;border-top:1px solid var(--rako-line);">
-            <p style="color:var(--rako-text-muted);font-size:0.88rem;margin:0 0 12px;">Want a quick walkthrough that points at each part of the screen?</p>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <button class="btn btn-primary" id="welcomeTourBtn">Take the guided tour</button>
-                <button class="btn btn-outline-secondary" id="welcomeSkipBtn">Skip tour, start drawing</button>
-                <button class="btn btn-link text-decoration-none" id="welcomeHelpBtn" style="color:var(--rako-text-muted);">See full instructions</button>
+        `<div style="margin-top:26px;padding-top:22px;border-top:1px solid var(--rako-line);">
+            <button class="btn btn-primary" id="welcomeTourBtn"
+                    style="width:100%;padding:18px 22px;font-size:1.15rem;font-weight:600;border-radius:12px;
+                           display:flex;align-items:center;justify-content:center;gap:10px;">
+                <i class="bi bi-signpost-split" style="font-size:1.3rem;"></i>
+                Take the guided tour
+            </button>
+            <p style="color:var(--rako-text-muted);font-size:0.85rem;margin:10px 0 16px;text-align:center;">
+                A quick walkthrough that points at each part of the screen and explains what it does.
+            </p>
+            <div style="display:flex;justify-content:center;gap:22px;">
+                <button class="btn btn-link text-decoration-none btn-sm" id="welcomeSkipBtn" style="color:var(--rako-text-muted);">Skip, start drawing</button>
+                <button class="btn btn-link text-decoration-none btn-sm" id="welcomeHelpBtn" style="color:var(--rako-text-muted);">See full instructions</button>
             </div>
          </div>`
     );
@@ -379,6 +387,14 @@ function setupEmptyState() {
     const palette = document.getElementById('palette');
     if (!canvas || !wrapper) return;
 
+    // Only ever shown on the very first open - once seen (this run), it
+    // never comes back, even if the canvas is emptied again later (a
+    // cleared drawing, a fresh page tab, etc).
+    let seen = false;
+    try { seen = localStorage.getItem(EMPTY_STATE_KEY) === '1'; } catch (e) { seen = true; }
+    if (seen) return;
+    try { localStorage.setItem(EMPTY_STATE_KEY, '1'); } catch (e) {}
+
     const hint = document.createElement('div');
     hint.id = 'canvasEmptyState';
     hint.innerHTML = `
@@ -423,6 +439,9 @@ function setupEmptyState() {
 export function setupUI(app) {
     const helpBtn = document.getElementById('helpBtn');
     if (helpBtn) helpBtn.addEventListener('click', openHelp);
+
+    const tourBtn = document.getElementById('tourBtn');
+    if (tourBtn) tourBtn.addEventListener('click', startTour);
 
     app.showNotification = showNotification;
     app.openHelp = openHelp;
