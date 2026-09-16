@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.22';
+import { showNotification, showActionBar } from './utils.js?v=1.23';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -289,6 +289,79 @@ export function startTour() {
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', render);
     render();
+}
+
+/* ------------------------------------------------------------------ *
+ * Print tip - a one-time spotlighted callout on the Print Schematic
+ * button, shown the first time it's clicked, pointing out that the
+ * browser's print dialog needs "Save as PDF" picked as the destination.
+ * Browsers remember that choice for future print jobs afterwards, so
+ * this only ever needs to run once per browser.
+ * ------------------------------------------------------------------ */
+
+const PRINT_TIP_KEY = 'rakoSchematicPrintTipSeen';
+
+export function printWithTip(doPrint) {
+    let seen = false;
+    try { seen = localStorage.getItem(PRINT_TIP_KEY) === '1'; } catch (e) { seen = true; }
+    if (seen) { doPrint(); return; }
+    try { localStorage.setItem(PRINT_TIP_KEY, '1'); } catch (e) {}
+
+    const target = document.getElementById('printSchematicBtn');
+    if (!target) { doPrint(); return; }
+
+    const spotlight = document.createElement('div');
+    spotlight.id = 'printTipSpotlight';
+    spotlight.style.cssText = [
+        'position:fixed', 'z-index:100000', 'pointer-events:none', 'border-radius:2px',
+        'box-shadow:0 0 0 3px var(--rako-accent), 0 0 0 99999px rgba(1,3,31,0.55)'
+    ].join(';');
+    document.body.appendChild(spotlight);
+
+    const callout = document.createElement('div');
+    callout.id = 'printTipCallout';
+    callout.style.cssText = [
+        'position:fixed', 'z-index:100001', 'background:#fff', 'border:1px solid var(--rako-line-dk)',
+        'border-radius:2px', 'box-sizing:border-box', 'box-shadow:0 10px 40px rgba(0,0,0,0.30)',
+        'padding:18px 20px', 'width:300px', 'font-family:var(--rako-font)'
+    ].join(';');
+    callout.innerHTML = `
+        <div style="font-weight:600;font-size:0.98rem;margin-bottom:6px;color:var(--rako-text);">Save as PDF</div>
+        <div style="color:var(--rako-text-muted);line-height:1.5;font-size:0.88rem;margin-bottom:16px;">
+            In the dialog that opens next, set <b>Destination</b> to <b>Save as PDF</b>. Your browser remembers that choice for next time, so this is a one-off.
+        </div>
+        <div style="display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary btn-sm" id="printTipContinueBtn">Continue to print</button>
+        </div>`;
+    document.body.appendChild(callout);
+
+    const r = target.getBoundingClientRect();
+    const pad = 6;
+    spotlight.style.top = (r.top - pad) + 'px';
+    spotlight.style.left = (r.left - pad) + 'px';
+    spotlight.style.width = (r.width + pad * 2) + 'px';
+    spotlight.style.height = (r.height + pad * 2) + 'px';
+
+    const calloutWidth = 300, calloutHeight = 170, margin = 14;
+    let top = Math.min(r.bottom + margin, window.innerHeight - calloutHeight - margin);
+    let left = Math.max(margin, Math.min(r.right - calloutWidth, window.innerWidth - calloutWidth - margin));
+    callout.style.top = top + 'px';
+    callout.style.left = left + 'px';
+
+    let done = false;
+    const proceed = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        spotlight.remove();
+        callout.remove();
+        document.removeEventListener('keydown', onKey);
+        doPrint();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') proceed(); };
+    document.addEventListener('keydown', onKey);
+    callout.querySelector('#printTipContinueBtn').onclick = proceed;
+    const timer = setTimeout(proceed, 4000);
 }
 
 /* ------------------------------------------------------------------ *
