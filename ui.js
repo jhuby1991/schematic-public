@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification } from './utils.js?v=1.19';
+import { showNotification, showActionBar } from './utils.js?v=1.20';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -339,12 +339,34 @@ export function openWelcome(forced = false) {
 }
 
 function maybeShowWelcome() {
-    let seen = false;
-    try { seen = localStorage.getItem(WELCOME_KEY) === '1'; } catch (e) { seen = true; }
+    let welcomeSeen = false;
+    try { welcomeSeen = localStorage.getItem(WELCOME_KEY) === '1'; } catch (e) { welcomeSeen = true; }
     // Don't interrupt someone who is mid-recovery of an autosaved drawing.
     let hasAutosave = false;
     try { hasAutosave = !!localStorage.getItem('schematicAutoSave'); } catch (e) {}
-    if (!seen && !hasAutosave) setTimeout(() => openWelcome(), 400);
+    if (hasAutosave) return;
+
+    if (!welcomeSeen) {
+        setTimeout(() => openWelcome(), 400);
+        return;
+    }
+
+    // Returning users who dismissed the welcome screen before the guided
+    // tour existed would otherwise never learn it's there - offer it once,
+    // non-blocking, with an explicit way to dismiss.
+    let tourSeen = false;
+    try { tourSeen = localStorage.getItem(TOUR_KEY) === '1'; } catch (e) { tourSeen = true; }
+    if (!tourSeen) {
+        setTimeout(() => {
+            showActionBar({
+                message: 'New: a guided tour of the tool is now available.',
+                actions: [
+                    { label: 'No thanks', onClick: markTourSeen },
+                    { label: 'Take the tour', variant: 'btn-primary', onClick: startTour }
+                ]
+            });
+        }, 600);
+    }
 }
 
 /* ------------------------------------------------------------------ *
