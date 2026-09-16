@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.21';
+import { showNotification, showActionBar } from './utils.js?v=1.22';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -78,11 +78,11 @@ function buildModal(id, titleHtml, bodyHtml, footerHtml = '') {
     ].join(';');
     overlay.innerHTML = `
       <div class="app-modal-box" style="background:#fff;max-width:720px;width:100%;max-height:88vh;overflow-y:auto;
-           border-radius:16px;box-shadow:0 20px 60px rgba(1,3,31,0.3);padding:32px;position:relative;
+           border:1px solid var(--rako-line-dk);border-radius:2px;box-shadow:0 10px 40px rgba(0,0,0,0.30);padding:32px;position:relative;
            transform:scale(.97);transition:transform .2s ease;">
         <button class="app-modal-close" aria-label="Close"
-                style="position:absolute;top:16px;right:16px;background:var(--rako-panel);border:none;border-radius:50%;
-                       width:36px;height:36px;font-size:1.4rem;line-height:1;cursor:pointer;color:var(--rako-text-muted);">&times;</button>
+                style="position:absolute;top:16px;right:16px;background:var(--rako-panel);border:1px solid var(--rako-line-dk);border-radius:2px;
+                       width:32px;height:32px;font-size:1.3rem;line-height:1;cursor:pointer;color:var(--rako-text-muted);">&times;</button>
         <div class="app-modal-head">${titleHtml}</div>
         <div class="app-modal-body">${bodyHtml}</div>
         ${footerHtml}
@@ -194,7 +194,7 @@ export function startTour() {
     const spotlight = document.createElement('div');
     spotlight.id = 'tourSpotlight';
     spotlight.style.cssText = [
-        'position:fixed', 'z-index:100000', 'pointer-events:none', 'border-radius:6px',
+        'position:fixed', 'z-index:100000', 'pointer-events:none', 'border-radius:2px',
         'transition:top .22s ease, left .22s ease, width .22s ease, height .22s ease'
     ].join(';');
     document.body.appendChild(spotlight);
@@ -202,8 +202,9 @@ export function startTour() {
     const callout = document.createElement('div');
     callout.id = 'tourCallout';
     callout.style.cssText = [
-        'position:fixed', 'z-index:100001', 'background:#fff', 'border-radius:12px', 'box-sizing:border-box',
-        'box-shadow:0 16px 48px rgba(1,3,31,0.35)', 'padding:20px', 'width:320px',
+        'position:fixed', 'z-index:100001', 'background:#fff', 'border:1px solid var(--rako-line-dk)',
+        'border-radius:2px', 'box-sizing:border-box',
+        'box-shadow:0 10px 40px rgba(0,0,0,0.30)', 'padding:20px', 'width:320px',
         'font-family:var(--rako-font)', 'transition:top .22s ease, left .22s ease'
     ].join(';');
     document.body.appendChild(callout);
@@ -299,7 +300,7 @@ export function openWelcome(forced = false) {
 
     const step = (num, title, body) => `
       <div style="display:flex;gap:16px;margin-bottom:20px;align-items:flex-start;">
-        <div style="flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--rako-accent);color:#fff;
+        <div style="flex-shrink:0;width:32px;height:32px;border-radius:2px;background:var(--rako-accent);color:#fff;
                     display:flex;align-items:center;justify-content:center;font-weight:600;font-size:0.95rem;">${num}</div>
         <div>
           <div style="font-weight:600;margin-bottom:3px;">${title}</div>
@@ -322,7 +323,7 @@ export function openWelcome(forced = false) {
                 'Fill in the project fields on the left, then <b>Print Schematic</b> and choose <i>Save as PDF</i>.'),
         `<div style="margin-top:26px;padding-top:22px;border-top:1px solid var(--rako-line);">
             <button class="btn btn-primary" id="welcomeTourBtn"
-                    style="width:100%;padding:18px 22px;font-size:1.15rem;font-weight:600;border-radius:12px;
+                    style="width:100%;padding:18px 22px;font-size:1.15rem;font-weight:600;border-radius:2px;
                            display:flex;align-items:center;justify-content:center;gap:10px;">
                 <i class="bi bi-signpost-split" style="font-size:1.3rem;"></i>
                 Take the guided tour
