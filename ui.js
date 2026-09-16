@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.23';
+import { showNotification, showActionBar } from './utils.js?v=1.24';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -14,16 +14,16 @@ const EMPTY_STATE_KEY = 'rakoSchematicEmptyStateSeen';
 const HELP_HTML = `
   <h3>Getting around</h3>
   <ul>
-    <li><b>Add a component</b> &mdash; open a group in the left-hand panel, then drag an item onto the grid.</li>
-    <li><b>Move it</b> &mdash; drag it. Components snap to the grid so things stay tidy.</li>
-    <li><b>Select several</b> &mdash; click an empty part of the grid and drag a box around them.</li>
-    <li><b>Remove something</b> &mdash; select it and press <b>Delete</b> or <b>Backspace</b>.</li>
+    <li><b>Add a component</b>: open a group in the left-hand panel, then drag an item onto the grid.</li>
+    <li><b>Move it</b>: drag it. Components snap to the grid so things stay tidy.</li>
+    <li><b>Select several</b>: click an empty part of the grid and drag a box around them.</li>
+    <li><b>Remove something</b>: select it and press <b>Delete</b> or <b>Backspace</b>.</li>
   </ul>
 
   <h3>Wiring things together</h3>
   <ul>
     <li>Click <b>Draw Line</b> (or press <b>Space</b>) to start drawing cables, then click from one component to another.</li>
-    <li>Use <b>Connector Colour</b> to pick the cable type &mdash; each type prints in its own colour with a legend.</li>
+    <li>Use <b>Connector Colour</b> to pick the cable type. Each type prints in its own colour with a legend.</li>
     <li>Press <b>Space</b> again to go back to moving components.</li>
   </ul>
 
@@ -43,28 +43,28 @@ const HELP_HTML = `
   <ul>
     <li><b>Save File</b> downloads your drawing as a file you can keep or email. <b>Load File</b> opens it again later.</li>
     <li>Your work is also kept in this browser automatically, so a refresh or a closed tab won't lose it.</li>
-    <li><b>Print Schematic</b> opens your print dialog &mdash; choose <i>Save as PDF</i> to get a PDF.</li>
+    <li><b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to get a PDF.</li>
   </ul>
 
   <h3>Keyboard shortcuts</h3>
   <ul>
-    <li><b>Space</b> &mdash; switch between drawing cables and moving components</li>
-    <li><b>Q W A S D R F</b> &mdash; change cable colour while drawing</li>
-    <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b> &mdash; undo / redo</li>
-    <li><b>Ctrl+C</b> / <b>Ctrl+V</b> &mdash; copy / paste</li>
-    <li><b>Delete</b> &mdash; remove what's selected</li>
+    <li><b>Space</b>: switch between drawing cables and moving components</li>
+    <li><b>Q W A S D R F</b>: change cable colour while drawing</li>
+    <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b>: undo / redo</li>
+    <li><b>Ctrl+C</b> / <b>Ctrl+V</b>: copy / paste</li>
+    <li><b>Delete</b>: remove what's selected</li>
   </ul>
 
   <h3>What the names mean</h3>
   <ul>
-    <li><b>RAK</b> &mdash; a wall-mounted dimmer rack that powers and controls lighting circuits.</li>
-    <li><b>DIN</b> &mdash; modules that clip into a consumer unit or distribution board.</li>
-    <li><b>Keypad</b> &mdash; the wall switch people actually press.</li>
-    <li><b>DPU</b> &mdash; the number of DIN power units your design is using, against the number available.</li>
-    <li><b>Wired RAK Circuits</b> &mdash; how many lighting circuits you've used, against the number available.</li>
+    <li><b>RAK</b>: a wall-mounted dimmer rack that powers and controls lighting circuits.</li>
+    <li><b>DIN</b>: modules that clip into a consumer unit or distribution board.</li>
+    <li><b>Keypad</b>: the wall switch people actually press.</li>
+    <li><b>DPU</b>: the number of DIN power units your design is using, against the number available.</li>
+    <li><b>Wired RAK Circuits</b>: how many lighting circuits you've used, against the number available.</li>
   </ul>
   <p style="color:#6c757d;font-size:0.9rem;margin-bottom:0;">
-    If either counter turns red you've gone past what the equipment supports &mdash; the message next to it tells you what to add.
+    If either counter turns red you've gone past what the equipment supports. The message next to it tells you what to add.
   </p>
 `;
 
@@ -135,7 +135,7 @@ const TOUR_STEPS = [
         selector: '#palette',
         placement: 'right',
         title: 'Your components',
-        body: 'Everything you can drag onto the drawing lives here, grouped by type &mdash; RAKs, DIN modules, keypads, sensors and connectors. Click a group’s heading to expand it.'
+        body: 'Everything you can drag onto the drawing lives here, grouped by type: RAKs, DIN modules, keypads, sensors and connectors. Click a group’s heading to expand it.'
     },
     {
         selector: '#drawing-canvas-wrapper',
@@ -147,7 +147,7 @@ const TOUR_STEPS = [
         selector: '#pageTabsBar',
         placement: 'bottom',
         title: 'Pages',
-        body: 'Each tab is its own printable page. Click <b>+</b> to add another &mdash; handy for splitting a large job across several sheets.'
+        body: 'Each tab is its own printable page. Click <b>+</b> to add another, which is handy for splitting a large job across several sheets.'
     },
     {
         selector: '#drawGridLineBtn',
@@ -159,7 +159,7 @@ const TOUR_STEPS = [
         selector: '#connectorColourDropdown',
         placement: 'bottom',
         title: 'Cable colour',
-        body: 'Pick a cable type before you draw a line &mdash; each type prints in its own colour, with a legend on the printout.'
+        body: 'Pick a cable type before you draw a line. Each type prints in its own colour, with a legend on the printout.'
     },
     {
         selector: '#drawing-toolbar',
@@ -171,13 +171,13 @@ const TOUR_STEPS = [
         selector: '#project-details',
         placement: 'right',
         title: 'Project details',
-        body: 'Fill in your project’s name, date, version and other details here. They’re saved with the drawing and printed in the title block &mdash; the DPU and circuit counters below warn you if a design goes past what the equipment supports.'
+        body: 'Fill in your project’s name, date, version and other details here. They’re saved with the drawing and printed in the title block. The DPU and circuit counters below warn you if a design goes past what the equipment supports.'
     },
     {
         selector: '#toolbarRightGroup',
         placement: 'bottom',
         title: 'Save, undo and print',
-        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog &mdash; choose <i>Save as PDF</i> to export.'
+        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
     }
 ];
 
@@ -386,10 +386,10 @@ export function openWelcome(forced = false) {
         `<h2 style="margin:0 0 8px;font-size:1.7rem;font-weight:600;">Welcome to the Schematic Tool</h2>
          <p style="color:var(--rako-text-muted);margin:0 0 26px;line-height:1.55;">
            Plan a RAKO lighting system by dragging components onto a grid and wiring them together.
-           When you're happy, print it to PDF. It's free to use and nothing is uploaded &mdash; your drawing stays on your computer.
+           When you're happy, print it to PDF. It's free to use and nothing is uploaded, so your drawing stays on your computer.
          </p>`,
         step(1, 'Pick your components',
-                'Open a group in the left-hand panel &mdash; RAKs, DIN modules, keypads, sensors &mdash; and drag what you need onto the grid.') +
+                'Open a group in the left-hand panel (RAKs, DIN modules, keypads, sensors) and drag what you need onto the grid.') +
         step(2, 'Wire them up',
                 'Click <b>Draw Line</b>, choose a cable colour, then click from one component to the next.') +
         step(3, 'Add your details and print',
@@ -475,7 +475,7 @@ function setupEmptyState() {
       <i class="bi bi-arrow-left" style="font-size:1.5rem;opacity:.5;"></i>
       <div>
         <div class="es-title" style="font-weight:600;font-size:1.05rem;color:var(--rako-text);margin-bottom:4px;">Your components are on the left</div>
-        <div style="color:var(--rako-text-muted);font-size:0.92rem;">Open a group &mdash; RAKs, DIN, Keypads, Sensors, Connectors &mdash; and drag one onto the grid to get started.</div>
+        <div style="color:var(--rako-text-muted);font-size:0.92rem;">Open a group (RAKs, DIN, Keypads, Sensors, Connectors) and drag one onto the grid to get started.</div>
       </div>`;
     wrapper.appendChild(hint);
 

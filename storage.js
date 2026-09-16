@@ -1,9 +1,9 @@
 // storage.js
 // Handles local save/load logic.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.23';
-import { showToast, showActionBar } from './utils.js?v=1.23';
-import { printWithTip } from './ui.js?v=1.23';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.24';
+import { showToast, showActionBar } from './utils.js?v=1.24';
+import { printWithTip } from './ui.js?v=1.24';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
@@ -37,7 +37,7 @@ export function setupStorage(app) {
                 localStorage.setItem('schematicToolData', JSON.stringify(data));
                 showToast('Drawing saved to this browser', 'success');
             } catch (e) {
-                showToast("Couldn't save \u2014 your browser storage may be full or blocked", 'error', 4000);
+                showToast("Couldn't save. Your browser storage may be full or blocked", 'error', 4000);
             }
         });
     }
@@ -52,7 +52,7 @@ export function setupStorage(app) {
                     showToast('No saved drawing found in this browser', 'info');
                 }
             } catch (e) {
-                showToast("Couldn't open that saved drawing \u2014 it may be damaged", 'error', 4000);
+                showToast("Couldn't open that saved drawing. It may be damaged", 'error', 4000);
             }
         });
     }

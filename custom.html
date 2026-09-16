@@ -408,20 +408,6 @@
             z-index: 5; 
             border-radius: 0;
         }
-        #schematicTitleDisplay {
-            position: absolute;
-            font-family: Avenir, Arial, sans-serif;
-            font-size: 24px;
-            color: #333;
-            background-color: rgba(255, 255, 255, 0.85);
-            padding: 4px 8px;
-            border-radius: 3px;
-            z-index: 15; 
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            text-align: center;
-        }
 
         .canvas-item {
             position: absolute;
@@ -771,7 +757,7 @@
                 background: #fff !important;
                 border-radius: 30px;
             }
-            #palette, .toolbar, #pdf-page-guide, #project-details, #schematicTitleDisplay, #drawing-toolbar, #text-box-properties-panel, #left-column, #pageTabsBar {
+            #palette, .toolbar, #pdf-page-guide, #project-details, #drawing-toolbar, #text-box-properties-panel, #left-column, #pageTabsBar {
                 display: none !important;
             }
             /* Explicit, not relying on Bootstrap's own CSS: a modal only
@@ -1724,7 +1710,6 @@
             box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
         }
         .canvas-text-box:hover { border-color: #8F8F8F; }
-        #schematicTitleDisplay { font-family: var(--rako-font); color: var(--rako-text); }
         #connector-type-notification {
             background-color: rgba(40, 40, 40, 0.92);
             border-radius: 2px;
@@ -1841,7 +1826,7 @@
 
     <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center;">
-            <button id="drawGridLineBtn" class="btn btn-primary btn-sm" style="margin-right:5px;" title="Draw Line (L) — Esc or right-click to exit">Draw Line&nbsp;&nbsp;L</button>
+            <button id="drawGridLineBtn" class="btn btn-primary btn-sm" style="margin-right:5px;" title="Draw Line (L). Press Esc or right-click to exit">Draw Line&nbsp;&nbsp;L</button>
             <!-- Zoom bar -->
             <div id="zoom-bar" style="display: none; align-items: center; gap: 4px; margin-right: 10px;">
                 <button id="zoomOutBtn" class="btn btn-light btn-sm" title="Zoom Out">-</button>
@@ -1882,7 +1867,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.23</span>
+                <span class="app-version" title="Tool version">v1.24</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2147,7 +2132,6 @@
                 <div id="drawing-canvas">
                     <svg id="grid-svg"></svg>
                     <div id="pdf-page-guide"></div>
-                    <div id="schematicTitleDisplay"></div>
                     <svg id="svg-overlay"></svg>
                 </div>
             </div>
@@ -2221,6 +2205,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.23"></script>
+    <script type="module" src="main.js?v=1.24"></script>
 </body>
 </html>
