@@ -1,8 +1,9 @@
 // storage.js
 // Handles local save/load logic.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.12';
-import { showToast, showActionBar } from './utils.js?v=1.12';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.31';
+import { showToast, showActionBar } from './utils.js?v=1.31';
+import { printWithTip } from './ui.js?v=1.31';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
@@ -36,7 +37,7 @@ export function setupStorage(app) {
                 localStorage.setItem('schematicToolData', JSON.stringify(data));
                 showToast('Drawing saved to this browser', 'success');
             } catch (e) {
-                showToast("Couldn't save \u2014 your browser storage may be full or blocked", 'error', 4000);
+                showToast("Couldn't save. Your browser storage may be full or blocked", 'error', 4000);
             }
         });
     }
@@ -51,7 +52,7 @@ export function setupStorage(app) {
                     showToast('No saved drawing found in this browser', 'info');
                 }
             } catch (e) {
-                showToast("Couldn't open that saved drawing \u2014 it may be damaged", 'error', 4000);
+                showToast("Couldn't open that saved drawing. It may be damaged", 'error', 4000);
             }
         });
     }
@@ -104,14 +105,19 @@ export function setupStorage(app) {
     // --- Print ---
     if (printSchematicBtn) {
         printSchematicBtn.addEventListener('click', () => {
-            // Set document.title to project name and version for print file name
-            const originalTitle = document.title;
-            const projectName = (projectNameInput?.value || 'schematic').replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
-            const version = versionInput?.value ? `_v${versionInput.value.replace(/[^a-z0-9_.-]/gi, '_')}` : '';
-            document.title = `${projectName}${version}`;
-            window.print();
-            // Restore original title after a short delay
-            setTimeout(() => { document.title = originalTitle; }, 1000);
+            printWithTip(async () => {
+                // Set document.title to project name and version for print file name
+                const originalTitle = document.title;
+                const projectName = (projectNameInput?.value || 'schematic').replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
+                const version = versionInput?.value ? `_v${versionInput.value.replace(/[^a-z0-9_.-]/gi, '_')}` : '';
+                document.title = `${projectName}${version}`;
+                if (window.app && typeof window.app.printAllPages === 'function') {
+                    await window.app.printAllPages();
+                }
+                window.print();
+                // Restore original title after a short delay
+                setTimeout(() => { document.title = originalTitle; }, 1000);
+            });
         });
     }
 
