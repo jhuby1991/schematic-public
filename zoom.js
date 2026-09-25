@@ -1,7 +1,10 @@
 // zoom.js
 // Handles zooming and panning functionality for the canvas
 
-let initialZoom = 1.3;
+// 1.0 so the canvas is shown at the size it prints. It used to be 1.3, which
+// made everything on screen 30% larger than on paper - labels that looked
+// comfortably spaced while drawing came out cramped in the PDF.
+let initialZoom = 1.0;
 let initialTranslate = { x: 0, y: 0 };
 let currentZoom = initialZoom;
 let isPanning = false;
@@ -24,18 +27,42 @@ export function setupZoomPan() {
     updateZoomLevel();
     console.log('ZoomPan INIT', { currentZoom, currentTranslate });
 
-    // Disable zoom buttons and mouse wheel zoom
-    if (zoomInBtn) zoomInBtn.disabled = true;
-    if (zoomOutBtn) zoomOutBtn.disabled = true;
-    if (zoomResetBtn) zoomResetBtn.disabled = true;
-    if (zoomFitBtn) zoomFitBtn.disabled = true;
-    // Remove event listeners for zooming
-    if (canvas) {
-        canvas.onwheel = null;
-    }
-    // Optionally, hide the zoom bar UI
+    // Zoom is purely a viewing aid: printing clones the canvas into its own
+    // .print-sheet and re-fits it from untransformed coordinates, so the zoom
+    // level on screen has no effect on what comes out of the printer.
     const zoomBar = document.getElementById('zoom-bar');
-    if (zoomBar) zoomBar.style.display = 'none';
+    if (zoomBar) zoomBar.style.display = 'flex';
+
+    if (zoomInBtn) {
+        zoomInBtn.disabled = false;
+        zoomInBtn.addEventListener('click', () => zoom(0.1));
+    }
+    if (zoomOutBtn) {
+        zoomOutBtn.disabled = false;
+        zoomOutBtn.addEventListener('click', () => zoom(-0.1));
+    }
+    if (zoomResetBtn) {
+        zoomResetBtn.disabled = false;
+        zoomResetBtn.addEventListener('click', () => {
+            currentZoom = initialZoom;
+            currentTranslate = { ...initialTranslate };
+            updateTransform();
+            updateZoomLevel();
+        });
+    }
+    if (zoomFitBtn) {
+        zoomFitBtn.disabled = false;
+        zoomFitBtn.addEventListener('click', fitToView);
+    }
+
+    // Ctrl/Cmd + wheel zooms; a plain wheel still scrolls the canvas wrapper.
+    if (canvas) {
+        canvas.addEventListener('wheel', (e) => {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            zoomAtPoint(e.deltaY < 0 ? 0.1 : -0.1, e.clientX, e.clientY);
+        }, { passive: false });
+    }
 
     // Pan button
     if (panBtn && canvas) {
