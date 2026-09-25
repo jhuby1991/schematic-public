@@ -495,7 +495,7 @@
             user-select: none;
             z-index: 10;
         }
-        .canvas-component {
+        .canvas-item[data-type] {
             border: none !important;
             z-index: 20; 
             padding: 0; 
@@ -503,14 +503,14 @@
             position: absolute; 
             box-sizing: border-box;
         }
-        .canvas-component:hover {
+        .canvas-item[data-type]:hover {
             border-color: #ccc;
         }
-        .canvas-component.selected, .canvas-text-box.selected, .floating-connector.selected, .canvas-shape.selected {
+        .canvas-item[data-type].selected, .canvas-text-box.selected, .floating-connector.selected, .canvas-shape.selected {
             border: 1px solid #007bff !important; 
             box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
         }
-        .canvas-component img {
+        .canvas-item[data-type] img {
             display: block;
             width: 100%;
             height: 100%;
@@ -630,18 +630,23 @@
             border-radius: 0 !important;
         }
 
-        .rak8-output-label {
+        .output-label {
             position: absolute;
-            font-size: 8px; /* Base font size, will be scaled by parent component in print */
+            font-size: 8px;
+            /* A RAK8 gives each circuit (imageHeight - padding) / 8 = ~8.25px of
+               vertical room. line-height 1.2 plus vertical padding made the box
+               11.6px tall, so every label overlapped the next by ~3.6px. At
+               line-height 1 with no vertical padding the box is 8px and fits. */
+            line-height: 1;
+            padding: 0 2px;
             color: #333;
-            background-color: transparent; 
-            padding: 1px 0px; 
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 2px;
             white-space: nowrap;
-            pointer-events: none;
-            z-index: 26; 
-            line-height: 1.2;
+            cursor: pointer;
+            z-index: 21;
         }
-        .rak8-label-line-svg { 
+        svg.output-label-lines { 
             position: absolute;
             top: 0;
             left: 0;
@@ -650,7 +655,7 @@
             pointer-events: none;
             z-index: 19; 
         }
-        .rak8-label-line { 
+        .output-label-lines line { 
             stroke: #555;
             stroke-width: 1; /* Base stroke width, will be scaled by parent component in print */
         }
@@ -910,24 +915,27 @@
                 z-index: 10000;
             }
 
-            .canvas-component {
+            .canvas-item[data-type] {
                 border: none !important;
                 transform: var(--print-translate, translateY(0)) scale(var(--component-print-scale));
                 transform-origin: top left;
             }
-            .canvas-component img {
+            .canvas-item[data-type] img {
                 transform: none; 
             }
 
             .node, .node-add-button { display: none !important; } 
            
-            .rak8-output-label {
-                 /* font-size is 8px, scaled by parent's transform. This will make it 10% larger due to --component-print-scale change. */
-                 font-size: 8px; 
-                 color: black !important;
+            .output-label {
+                 font-size: 8px;
+                 line-height: 1;
+                 color: #000 !important;
+                 /* Transparent on paper: the on-screen white plate stops labels
+                    being lost in the grid, but printed it masks the leader lines
+                    and the label above it. */
                  background-color: transparent !important;
             }
-            .rak8-label-line {
+            .output-label-lines line {
                 /* stroke-width is 1.5px, scaled by parent's transform. This will make it 10% larger. */
                 stroke: black !important;
                 stroke-width: 1.5px; 
@@ -938,7 +946,7 @@
                 border-width: 1px !important; 
                 border-color: #000 !important;
                 background-color: transparent !important;
-                /* If .canvas-shape gets .canvas-component class or similar scaling, it will scale. Otherwise, it won't. */
+                /* If .canvas-shape gets .canvas-item[data-type] class or similar scaling, it will scale. Otherwise, it won't. */
                 /* Assuming shapes might also be considered "objects" and should scale: */
                 transform: scale(var(--component-print-scale)); 
                 transform-origin: top left;
@@ -1011,8 +1019,8 @@
             }
             .keypad-term-star-label { font-size: 5pt !important; z-index: 4 !important;} /* Scaled by parent if parent is scaled */
             /* Overlap stacked RAK8 and RAK-LINK units by 6px when printing (using transform for absolutely positioned elements) */
-            .canvas-component[data-type="RAK8"]:not(:first-of-type),
-            .canvas-component[data-type="RAKLink"]:not(:first-of-type) {
+            .canvas-item[data-type="RAK8"]:not(:first-of-type),
+            .canvas-item[data-type="RAKLink"]:not(:first-of-type) {
                 --print-translate: translateY(-6px);
             }
             body::after {
@@ -1198,25 +1206,25 @@
         }
 
         /* Add a new rule for RAK8, RAKSTAR, and RAK-Link to ensure no padding */
-        .canvas-component[data-type="RAK8"],
-        .canvas-component[data-type="RAKSTAR"],
-        .canvas-component[data-type="RAKLink"] {
+        .canvas-item[data-type="RAK8"],
+        .canvas-item[data-type="RAKSTAR"],
+        .canvas-item[data-type="RAKLink"] {
             padding: 0 !important;
             margin: 0 !important;
             border-radius: 0 !important;
         }
         @media print {
-            .canvas-component[data-type="RAK8"],
-            .canvas-component[data-type="RAKSTAR"],
-            .canvas-component[data-type="RAKLink"] {
+            .canvas-item[data-type="RAK8"],
+            .canvas-item[data-type="RAKSTAR"],
+            .canvas-item[data-type="RAKLink"] {
                 padding: 0 !important;
                 margin: 0 !important;
                 border-radius: 0 !important;
             }
         }
-        .canvas-component[data-type="DIN4C"],
-        .canvas-component[data-type="DIN4T"],
-        .canvas-component[data-type="DIN8S"] {
+        .canvas-item[data-type="DIN4C"],
+        .canvas-item[data-type="DIN4T"],
+        .canvas-item[data-type="DIN8S"] {
             background: transparent !important;
         }
 
@@ -1315,8 +1323,8 @@
             }
         }
 
-        .canvas-component[data-type="RAK8"] img,
-        .canvas-component[data-type="RAKSTAR"] img {
+        .canvas-item[data-type="RAK8"] img,
+        .canvas-item[data-type="RAKSTAR"] img {
             object-fit: fill !important;
         }
 
@@ -1413,27 +1421,27 @@
         }
 
         /* Scale rules for new keypads */
-        .canvas-component[data-type="RCM"],
-        .canvas-component[data-type="RK-EOS"],
-        .canvas-component[data-type="RK-MOD"] {
+        .canvas-item[data-type="RCM"],
+        .canvas-item[data-type="RK-EOS"],
+        .canvas-item[data-type="RK-MOD"] {
             width: calc(2 * var(--grid-size)) !important;
             height: calc(2 * var(--grid-size)) !important;
             padding: 4px !important;
             margin: 0 !important;
         }
         
-        .canvas-component[data-type="RCM"] img,
-        .canvas-component[data-type="RK-EOS"] img,
-        .canvas-component[data-type="RK-MOD"] img {
+        .canvas-item[data-type="RCM"] img,
+        .canvas-item[data-type="RK-EOS"] img,
+        .canvas-item[data-type="RK-MOD"] img {
             width: 100% !important;
             height: 100% !important;
             object-fit: contain !important;
         }
         
         @media print {
-            .canvas-component[data-type="RCM"],
-            .canvas-component[data-type="RK-EOS"],
-            .canvas-component[data-type="RK-MOD"] {
+            .canvas-item[data-type="RCM"],
+            .canvas-item[data-type="RK-EOS"],
+            .canvas-item[data-type="RK-MOD"] {
                 width: calc(2 * var(--grid-size)) !important;
                 height: calc(2 * var(--grid-size)) !important;
                 padding: 4px !important;
@@ -1442,8 +1450,8 @@
         }
         
         /* Permanent labels for connectors */
-        .canvas-component[data-type="DINCONNECT"]::before,
-        .canvas-component[data-type="WKCONNECT"]::before {
+        .canvas-item[data-type="DINCONNECT"]::before,
+        .canvas-item[data-type="WKCONNECT"]::before {
             content: attr(data-type);
             position: absolute;
             top: -15px;
@@ -1458,17 +1466,17 @@
             font-family: Avenir, Arial, sans-serif;
         }
         
-        .canvas-component[data-type="DINCONNECT"]::before {
+        .canvas-item[data-type="DINCONNECT"]::before {
             content: "DIN-CONNECT";
         }
         
-        .canvas-component[data-type="WKCONNECT"]::before {
+        .canvas-item[data-type="WKCONNECT"]::before {
             content: "WK-CONNECT";
         }
         
         @media print {
-            .canvas-component[data-type="DINCONNECT"]::before,
-            .canvas-component[data-type="WKCONNECT"]::before {
+            .canvas-item[data-type="DINCONNECT"]::before,
+            .canvas-item[data-type="WKCONNECT"]::before {
                 background: white !important;
                 color: black !important;
             }
@@ -1789,7 +1797,7 @@
            normal cursor (move), not crosshair, to match. */
         #drawing-canvas.draw-mode { cursor: crosshair; }
         #pdf-page-guide { border-color: rgba(0, 0, 0, 0.38); }
-        .canvas-component.selected,
+        .canvas-item[data-type].selected,
         .canvas-text-box.selected,
         .floating-connector.selected,
         .canvas-shape.selected {
@@ -1915,11 +1923,11 @@
         <div style="display: flex; align-items: center;">
             <button id="drawGridLineBtn" class="btn btn-primary btn-sm" style="margin-right:5px;" title="Draw Line (L). Press Esc or right-click to exit">Draw Line&nbsp;&nbsp;L</button>
             <!-- Zoom bar -->
-            <div id="zoom-bar" style="display: none; align-items: center; gap: 4px; margin-right: 10px;">
-                <button id="zoomOutBtn" class="btn btn-light btn-sm" title="Zoom Out">-</button>
-                <span id="zoomLevelDisplay" style="min-width: 48px; text-align: center; font-size: 14px;">130%</span>
-                <button id="zoomInBtn" class="btn btn-light btn-sm" title="Zoom In">+</button>
-                <button id="zoomResetBtn" class="btn btn-light btn-sm" title="Reset Zoom" style="font-size: 13px;">⟳</button>
+            <div id="zoom-bar" style="display: flex; align-items: center; gap: 4px; margin-right: 10px;">
+                <button id="zoomOutBtn" class="btn btn-light btn-sm" title="Zoom out (Ctrl + scroll)">-</button>
+                <span id="zoomLevelDisplay" style="min-width: 48px; text-align: center; font-size: 14px;">100%</span>
+                <button id="zoomInBtn" class="btn btn-light btn-sm" title="Zoom in (Ctrl + scroll)">+</button>
+                <button id="zoomResetBtn" class="btn btn-light btn-sm" title="Reset to 100% (print size)" style="font-size: 13px;">⟳</button>
             </div>
             <div class="btn-group" style="margin-right:5px;">
               <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="connectorColourDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1954,7 +1962,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.31</span>
+                <span class="app-version" title="Tool version">v1.32</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2321,6 +2329,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.31"></script>
+    <script type="module" src="main.js?v=1.32"></script>
 </body>
 </html>
