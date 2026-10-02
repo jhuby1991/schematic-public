@@ -632,6 +632,11 @@ export function setupCanvas(app) {
 
         const canvasClone = drawingCanvas.cloneNode(true);
         canvasClone.classList.add('ps-canvas');
+        // Selection is a screen affordance. Whatever happened to be selected
+        // when Print was pressed would otherwise print with its orange ring
+        // (components, labels and shapes) or an orange stroke (connector
+        // lines), so the clone is deselected before it is measured.
+        canvasClone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
         canvasClone.style.transform = fit ? fit.transform : 'none';
         sheet.appendChild(canvasClone);
 
