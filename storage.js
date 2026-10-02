@@ -112,7 +112,9 @@ export function setupStorage(app) {
                 const version = versionInput?.value ? `_v${versionInput.value.replace(/[^a-z0-9_.-]/gi, '_')}` : '';
                 document.title = `${projectName}${version}`;
                 if (window.app && typeof window.app.printAllPages === 'function') {
-                    await window.app.printAllPages();
+                    // false = the user cancelled the "items will be cut off" warning
+                    const proceed = await window.app.printAllPages();
+                    if (proceed === false) { document.title = originalTitle; return; }
                 }
                 window.print();
                 // Restore original title after a short delay
