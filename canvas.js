@@ -556,7 +556,9 @@ export function setupCanvas(app) {
         const scale = getCanvasScale();
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, found = false;
-        const include = (l, t, r, b) => {
+        const rects = []; // each item's own box, for the print fit's off-sheet check
+        const include = (l, t, r, b, isItem) => {
+            if (isItem) rects.push({ left: l, top: t, right: r, bottom: b });
             if (![l, t, r, b].every(Number.isFinite)) return;
             found = true;
             if (l < minX) minX = l;
@@ -573,7 +575,8 @@ export function setupCanvas(app) {
                 (r.left   - canvasRect.left) / scale,
                 (r.top    - canvasRect.top)  / scale,
                 (r.right  - canvasRect.left) / scale,
-                (r.bottom - canvasRect.top)  / scale
+                (r.bottom - canvasRect.top)  / scale,
+                true
             );
         });
 
@@ -589,7 +592,7 @@ export function setupCanvas(app) {
         }
 
         if (!found) return null;
-        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY, rects };
     }
 
     /** Pure fit math: bounds + printable area -> a translate+scale transform. */
@@ -610,7 +613,7 @@ export function setupCanvas(app) {
 
         const tx = offsetX - bounds.x * scale;
         const ty = offsetY - bounds.y * scale;
-        return { scale, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
+        return { scale, tx, ty, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
     }
 
     /**
@@ -629,6 +632,16 @@ export function setupCanvas(app) {
         const pageBox = getPageBoxPx();
         sheet.style.width = pageBox.width + 'px';
         sheet.style.height = pageBox.height + 'px';
+
+        // The fit never shrinks past PRINT_MIN_SCALE, so a drawing spread wider
+        // than that allows is not scaled down any further - the overhang simply
+        // falls off the paper. Record what lands outside this sheet while its
+        // fit is known, so printAllPages() can warn before the print dialog
+        // opens rather than leaving it to be found in the PDF.
+        const pageBoxPx = getPageBoxPx();
+        const offSheet = (fit && bounds && bounds.rects) ? bounds.rects.filter(r => fit.tx + r.left * fit.scale < 0 || fit.ty + r.top * fit.scale < 0 || fit.tx + r.right * fit.scale > pageBoxPx.width || fit.ty + r.bottom * fit.scale > pageBoxPx.height).length : 0;
+        if (offSheet > 0) sheet.dataset.clippedItems = String(offSheet);
+        if (offSheet > 0) sheet.dataset.pageName = pageName;
 
         const canvasClone = drawingCanvas.cloneNode(true);
         canvasClone.classList.add('ps-canvas');
@@ -747,10 +760,21 @@ export function setupCanvas(app) {
         renderTabBar();
     }
 
+    // Returns false if the user backed out of the "items will be cut off"
+    // warning, in which case the caller must not open the print dialog.
     app.printAllPages = async function() {
         renderPrintInfoBlock();
         renderPrintConnectorLegend();
         await buildPrintSheets();
+        const lost = [...document.querySelectorAll('.print-sheet')].filter(el => el.dataset.clippedItems).map(el => ({ name: el.dataset.pageName, count: Number(el.dataset.clippedItems) }));
+        const total = lost.reduce((n, pg) => n + pg.count, 0);
+        const where = lost.length > 1 ? ' (' + lost.map(pg => pg.name + ': ' + pg.count).join(', ') + ')' : '';
+        const message = total + (total === 1 ? ' item' : ' items') + where + ' sit outside the printable area and will not appear on the printout. The drawing is already being printed at its smallest readable size, so it cannot be shrunk further to fit them in. Move them inside the orange page guide to keep them.';
+        const proceed = !total || await showConfirm({ title: 'Some items will be cut off', message: message, confirmLabel: 'Print anyway', cancelLabel: 'Cancel', danger: true });
+        // Nothing reaches the print dialog when cancelled, so afterprint never
+        // fires: undo what was staged for it by hand.
+        if (!proceed) { clearPrintSheets(); cleanupPrintInfoBlock(); lastPrintScale = 1; }
+        return proceed;
     };
 
     window.addEventListener('beforeprint', () => {
