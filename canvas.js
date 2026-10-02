@@ -1,11 +1,11 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.31';
-import { doAutosave } from './storage.js?v=1.31';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.31';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.31';
-import { showToast, showConfirm } from './utils.js?v=1.31';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.32';
+import { doAutosave } from './storage.js?v=1.32';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.32';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.32';
+import { showToast, showConfirm } from './utils.js?v=1.32';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -335,7 +335,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.31').then(mod => {
+                import('./connections.js?v=1.32').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -1698,7 +1698,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.31').then(mod => {
+                    import('./connections.js?v=1.32').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1945,7 +1945,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.31').then(mod => {
+        import('./connections.js?v=1.32').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -2048,7 +2048,7 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.31').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.32').then(mod => mod.clearLineSelection());
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2061,7 +2061,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.31').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.32').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -2080,7 +2080,7 @@ export function setupCanvas(app) {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
             const iconPropertiesPanel = document.getElementById('icon-properties-panel');
             if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.31').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.32').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -2153,7 +2153,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.31').then(mod => {
+            import('./connections.js?v=1.32').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2321,7 +2321,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.31');
+            const mod = await import('./connections.js?v=1.32');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2669,7 +2669,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.31').then(mod => {
+                    import('./connections.js?v=1.32').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2691,7 +2691,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.31').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.32').then(mod => mod.clearLineSelection());
             }
         });
     }
