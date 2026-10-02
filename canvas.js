@@ -1,11 +1,11 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.31';
-import { doAutosave } from './storage.js?v=1.31';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.31';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.31';
-import { showToast, showConfirm } from './utils.js?v=1.31';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.32';
+import { doAutosave } from './storage.js?v=1.32';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.32';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.32';
+import { showToast, showConfirm } from './utils.js?v=1.32';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -335,7 +335,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.31').then(mod => {
+                import('./connections.js?v=1.32').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -556,7 +556,9 @@ export function setupCanvas(app) {
         const scale = getCanvasScale();
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, found = false;
-        const include = (l, t, r, b) => {
+        const rects = []; // each item's own box, for the print fit's off-sheet check
+        const include = (l, t, r, b, isItem) => {
+            if (isItem) rects.push({ left: l, top: t, right: r, bottom: b });
             if (![l, t, r, b].every(Number.isFinite)) return;
             found = true;
             if (l < minX) minX = l;
@@ -573,7 +575,8 @@ export function setupCanvas(app) {
                 (r.left   - canvasRect.left) / scale,
                 (r.top    - canvasRect.top)  / scale,
                 (r.right  - canvasRect.left) / scale,
-                (r.bottom - canvasRect.top)  / scale
+                (r.bottom - canvasRect.top)  / scale,
+                true
             );
         });
 
@@ -589,7 +592,7 @@ export function setupCanvas(app) {
         }
 
         if (!found) return null;
-        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY, rects };
     }
 
     /** Pure fit math: bounds + printable area -> a translate+scale transform. */
@@ -610,7 +613,7 @@ export function setupCanvas(app) {
 
         const tx = offsetX - bounds.x * scale;
         const ty = offsetY - bounds.y * scale;
-        return { scale, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
+        return { scale, tx, ty, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
     }
 
     /**
@@ -629,6 +632,16 @@ export function setupCanvas(app) {
         const pageBox = getPageBoxPx();
         sheet.style.width = pageBox.width + 'px';
         sheet.style.height = pageBox.height + 'px';
+
+        // The fit never shrinks past PRINT_MIN_SCALE, so a drawing spread wider
+        // than that allows is not scaled down any further - the overhang simply
+        // falls off the paper. Record what lands outside this sheet while its
+        // fit is known, so printAllPages() can warn before the print dialog
+        // opens rather than leaving it to be found in the PDF.
+        const pageBoxPx = getPageBoxPx();
+        const offSheet = (fit && bounds && bounds.rects) ? bounds.rects.filter(r => fit.tx + r.left * fit.scale < 0 || fit.ty + r.top * fit.scale < 0 || fit.tx + r.right * fit.scale > pageBoxPx.width || fit.ty + r.bottom * fit.scale > pageBoxPx.height).length : 0;
+        if (offSheet > 0) sheet.dataset.clippedItems = String(offSheet);
+        if (offSheet > 0) sheet.dataset.pageName = pageName;
 
         const canvasClone = drawingCanvas.cloneNode(true);
         canvasClone.classList.add('ps-canvas');
@@ -747,10 +760,21 @@ export function setupCanvas(app) {
         renderTabBar();
     }
 
+    // Returns false if the user backed out of the "items will be cut off"
+    // warning, in which case the caller must not open the print dialog.
     app.printAllPages = async function() {
         renderPrintInfoBlock();
         renderPrintConnectorLegend();
         await buildPrintSheets();
+        const lost = [...document.querySelectorAll('.print-sheet')].filter(el => el.dataset.clippedItems).map(el => ({ name: el.dataset.pageName, count: Number(el.dataset.clippedItems) }));
+        const total = lost.reduce((n, pg) => n + pg.count, 0);
+        const where = lost.length > 1 ? ' (' + lost.map(pg => pg.name + ': ' + pg.count).join(', ') + ')' : '';
+        const message = total + (total === 1 ? ' item' : ' items') + where + ' sit outside the printable area and will not appear on the printout. The drawing is already being printed at its smallest readable size, so it cannot be shrunk further to fit them in. Move them inside the orange page guide to keep them.';
+        const proceed = !total || await showConfirm({ title: 'Some items will be cut off', message: message, confirmLabel: 'Print anyway', cancelLabel: 'Cancel', danger: true });
+        // Nothing reaches the print dialog when cancelled, so afterprint never
+        // fires: undo what was staged for it by hand.
+        if (!proceed) { clearPrintSheets(); cleanupPrintInfoBlock(); lastPrintScale = 1; }
+        return proceed;
     };
 
     window.addEventListener('beforeprint', () => {
@@ -1674,7 +1698,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.31').then(mod => {
+                    import('./connections.js?v=1.32').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1921,7 +1945,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.31').then(mod => {
+        import('./connections.js?v=1.32').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -2024,7 +2048,7 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.31').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.32').then(mod => mod.clearLineSelection());
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2037,7 +2061,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.31').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.32').then(mod => mod.clearLineSelection());
         }
     });
 
@@ -2056,7 +2080,7 @@ export function setupCanvas(app) {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
             const iconPropertiesPanel = document.getElementById('icon-properties-panel');
             if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.31').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.32').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -2129,7 +2153,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.31').then(mod => {
+            import('./connections.js?v=1.32').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2297,7 +2321,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.31');
+            const mod = await import('./connections.js?v=1.32');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2645,7 +2669,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.31').then(mod => {
+                    import('./connections.js?v=1.32').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2667,7 +2691,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.31').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.32').then(mod => mod.clearLineSelection());
             }
         });
     }

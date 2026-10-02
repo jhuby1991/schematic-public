@@ -1,9 +1,9 @@
 // storage.js
 // Handles local save/load logic.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.31';
-import { showToast, showActionBar } from './utils.js?v=1.31';
-import { printWithTip } from './ui.js?v=1.31';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.32';
+import { showToast, showActionBar } from './utils.js?v=1.32';
+import { printWithTip } from './ui.js?v=1.32';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
@@ -112,7 +112,9 @@ export function setupStorage(app) {
                 const version = versionInput?.value ? `_v${versionInput.value.replace(/[^a-z0-9_.-]/gi, '_')}` : '';
                 document.title = `${projectName}${version}`;
                 if (window.app && typeof window.app.printAllPages === 'function') {
-                    await window.app.printAllPages();
+                    // false = the user cancelled the "items will be cut off" warning
+                    const proceed = await window.app.printAllPages();
+                    if (proceed === false) { document.title = originalTitle; return; }
                 }
                 window.print();
                 // Restore original title after a short delay
