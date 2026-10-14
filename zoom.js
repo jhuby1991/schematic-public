@@ -70,14 +70,19 @@ export function setupZoomPan() {
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        // Fix: Allow spacebar in input fields
-        if (document.activeElement && ['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase())) return;
+        // Allow spacebar in input fields, textareas, and any contenteditable
+        // (text box labels, generic component labels) - typing a space
+        // there is text entry, never a request to pan the canvas.
+        const active = document.activeElement;
+        if (active && (['input', 'textarea'].includes(active.tagName.toLowerCase()) || active.isContentEditable)) return;
         if (e.code === 'Space' && !e.repeat) {
             e.preventDefault();
             if (!isPanning) {
                 isPanning = true;
-                panBtn.classList.add('btn-primary');
-                panBtn.classList.remove('btn-light');
+                if (panBtn) {
+                    panBtn.classList.add('btn-primary');
+                    panBtn.classList.remove('btn-light');
+                }
                 canvas.classList.add('pan-active');
             }
         }
@@ -86,8 +91,10 @@ export function setupZoomPan() {
     document.addEventListener('keyup', (e) => {
         if (e.code === 'Space') {
             isPanning = false;
-            panBtn.classList.remove('btn-primary');
-            panBtn.classList.add('btn-light');
+            if (panBtn) {
+                panBtn.classList.remove('btn-primary');
+                panBtn.classList.add('btn-light');
+            }
             canvas.classList.remove('pan-active');
         }
     });

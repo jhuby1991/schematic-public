@@ -144,8 +144,8 @@ export function showActionBar({ message, actions = [] }) {
     bar.id = 'actionBar';
     bar.style.cssText = [
         'position:fixed', 'top:56px', 'left:50%', 'transform:translateX(-50%) translateY(-12px)',
-        'z-index:99998', 'background:#fff', 'border:1px solid var(--rako-line)',
-        'border-radius:12px', 'box-shadow:0 10px 34px rgba(1,3,31,0.18)',
+        'z-index:99998', 'background:#fff', 'border:1px solid var(--rako-line-dk)',
+        'border-radius:2px', 'box-shadow:0 10px 40px rgba(0,0,0,0.30)',
         'padding:14px 18px', 'display:flex', 'align-items:center', 'gap:14px',
         'font-family:var(--rako-font)', 'font-size:0.92rem',
         'max-width:min(94vw,620px)', 'flex-wrap:wrap', 'opacity:0',
