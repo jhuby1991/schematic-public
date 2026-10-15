@@ -1,12 +1,12 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.35';
-import { doAutosave } from './storage.js?v=1.35';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.35';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.35';
-import { showToast, showConfirm } from './utils.js?v=1.35';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.35';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.36';
+import { doAutosave } from './storage.js?v=1.36';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.36';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.36';
+import { showToast, showConfirm } from './utils.js?v=1.36';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.36';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -341,7 +341,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.35').then(mod => {
+                import('./connections.js?v=1.36').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -371,23 +371,44 @@ export function setupCanvas(app) {
     const PRINT_GEOMETRY = {
         pageWidthMm: 297,          // A4 landscape
         pageHeightMm: 210,
-        marginMm: 10,
-        infoBlockMm: 50,           // reserved for the title block + notes (matches its 5cm print height)
+        edgeMm: 6,                 // drawing's margin inside the printed frame, left, right and top
+        footerMm: 50,              // title block + notes, fixed to the bottom of every sheet (5cm in custom.html)
+        footerGapMm: 1.5,          // clear space between the drawing and the footer
+        stripMm: 7,                // band at the top of the footer, above its rule: page name, cable legend
         dpi: 96
     };
-
-    function getPrintAreaPx() {
-        const { pageWidthMm, pageHeightMm, marginMm, infoBlockMm, dpi } = PRINT_GEOMETRY;
-        const mmToPx = (1 / 25.4) * dpi;
-        return {
-            width:  (pageWidthMm  - 2 * marginMm) * mmToPx,
-            height: (pageHeightMm - 2 * marginMm - infoBlockMm) * mmToPx
-        };
-    }
+    const GRID_PX = 10;            // the canvas grid (GRID_SIZE below); the page is a whole number of squares
+    const MM_TO_PX = PRINT_GEOMETRY.dpi / 25.4;
 
     // The @page CSS rule's own margin (0.2cm = 2mm), which the browser
     // insets automatically before body's content box starts.
     const CSS_PAGE_MARGIN_MM = 2;
+
+    /**
+     * Where the drawing goes on the printed sheet, in px from the sheet's
+     * top-left - and so the size of the page guide on screen, which is this
+     * same box. Worked out from the sheet as it actually prints: the frame,
+     * an even margin inside it, and the title block fixed to the bottom.
+     *
+     * It used to be a nominal 10mm margin all round with the drawing then
+     * printed hard against the top-left corner, so it never matched: about
+     * 20mm went unused on the right and 25mm between the drawing and the
+     * title block. It also wasn't a whole number of grid squares (1046.9 x
+     * 529.1px), so a component snapped into the right or bottom corner
+     * either stopped short of the edge or overhung it by a fraction of a
+     * pixel - enough to switch print to shrink-to-fit and move everything.
+     */
+    function getPrintAreaPx() {
+        const { pageWidthMm, pageHeightMm, edgeMm, footerMm, footerGapMm } = PRINT_GEOMETRY;
+        const sheetWidth = (pageWidthMm - 2 * CSS_PAGE_MARGIN_MM) * MM_TO_PX;
+        const sheetHeight = (pageHeightMm - 2 * CSS_PAGE_MARGIN_MM) * MM_TO_PX;
+        const footerTop = sheetHeight - footerMm * MM_TO_PX;
+        const width = Math.floor((sheetWidth - 2 * edgeMm * MM_TO_PX) / GRID_PX) * GRID_PX;
+        const left = (sheetWidth - width) / 2; // whatever rounding to the grid leaves, split evenly
+        const top = left;
+        const height = Math.floor((footerTop - footerGapMm * MM_TO_PX - top) / GRID_PX) * GRID_PX;
+        return { left, top, width, height };
+    }
 
     /**
      * Full printable page, in px, inside the @page margin - i.e. what a
@@ -408,11 +429,10 @@ export function setupCanvas(app) {
     const PAGE_BOX_SAFETY_PX = 2;
 
     function getPageBoxPx() {
-        const { pageWidthMm, pageHeightMm, dpi } = PRINT_GEOMETRY;
-        const mmToPx = (1 / 25.4) * dpi;
+        const { pageWidthMm, pageHeightMm } = PRINT_GEOMETRY;
         return {
-            width:  (pageWidthMm  - 2 * CSS_PAGE_MARGIN_MM) * mmToPx - PAGE_BOX_SAFETY_PX,
-            height: (pageHeightMm - 2 * CSS_PAGE_MARGIN_MM) * mmToPx - PAGE_BOX_SAFETY_PX
+            width:  (pageWidthMm  - 2 * CSS_PAGE_MARGIN_MM) * MM_TO_PX - PAGE_BOX_SAFETY_PX,
+            height: (pageHeightMm - 2 * CSS_PAGE_MARGIN_MM) * MM_TO_PX - PAGE_BOX_SAFETY_PX
         };
     }
 
@@ -426,9 +446,8 @@ export function setupCanvas(app) {
             pdfPageGuide.style.display = 'block';
         }
 
-        // Keep the canvas the same size as the page. The canvas is
-        // width/height: max-content, so it still grows if a drawing (or a
-        // loaded file from before this change) extends past the page edge.
+        // Keep the canvas the same size as the page. Items can still be
+        // placed past its edge; print then shrinks the page to take them in.
         if (canvasEl) {
             canvasEl.style.minWidth = `${area.width}px`;
             canvasEl.style.minHeight = `${area.height}px`;
@@ -602,21 +621,22 @@ export function setupCanvas(app) {
     }
 
     /**
-     * What the sheet should frame. The orange page guide is the page, so when
-     * the whole drawing sits inside it, print 1:1 from the guide's own corner
-     * and every object lands exactly where it was placed. Only when something
-     * spills outside does this fall back to framing the drawing itself, scaled
-     * and centred to fit - which moves it relative to the page, but keeps it
-     * on the paper.
+     * What the sheet should frame. The page guide is the drawing area of the
+     * printed sheet, so when the whole drawing sits inside it, print 1:1 with
+     * the guide's corner on the drawing area's corner, and every object lands
+     * exactly where it was placed. Only when something spills outside does
+     * this fall back to framing the drawing itself, scaled and centred in the
+     * drawing area - which moves it relative to the page, but keeps it on the
+     * paper. An empty page is placed 1:1 too.
      */
     const GUIDE_TOLERANCE_PX = 0.5;
     function computePageTransform(bounds, area) {
-        if (bounds
-            && bounds.x >= -GUIDE_TOLERANCE_PX
+        if (!bounds || (
+            bounds.x >= -GUIDE_TOLERANCE_PX
             && bounds.y >= -GUIDE_TOLERANCE_PX
             && bounds.x + bounds.width  <= area.width  + GUIDE_TOLERANCE_PX
-            && bounds.y + bounds.height <= area.height + GUIDE_TOLERANCE_PX) {
-            return { scale: 1, tx: 0, ty: 0, transform: 'none' };
+            && bounds.y + bounds.height <= area.height + GUIDE_TOLERANCE_PX)) {
+            return { scale: 1, tx: area.left, ty: area.top, transform: `translate(${area.left}px, ${area.top}px)` };
         }
         return computeFitTransform(bounds, area);
     }
@@ -637,8 +657,8 @@ export function setupCanvas(app) {
         const offsetX = PRINT_PADDING_PX + Math.max(0, (targetW - bounds.width  * scale) / 2);
         const offsetY = PRINT_PADDING_PX + Math.max(0, (targetH - bounds.height * scale) / 2);
 
-        const tx = offsetX - bounds.x * scale;
-        const ty = offsetY - bounds.y * scale;
+        const tx = area.left + offsetX - bounds.x * scale;
+        const ty = area.top + offsetY - bounds.y * scale;
         return { scale, tx, ty, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
     }
 
@@ -650,7 +670,8 @@ export function setupCanvas(app) {
      */
     function buildPrintSheet(pageName, pageNum, totalPages) {
         const bounds = getContentBoundsPx();
-        const fit = computePageTransform(bounds, getPrintAreaPx());
+        const area = getPrintAreaPx();
+        const fit = computePageTransform(bounds, area);
         if (fit && fit.scale <= PRINT_MIN_SCALE) lastPrintScale = Math.min(lastPrintScale, fit.scale);
 
         const sheet = document.createElement('div');
@@ -661,11 +682,12 @@ export function setupCanvas(app) {
 
         // The fit never shrinks past PRINT_MIN_SCALE, so a drawing spread wider
         // than that allows is not scaled down any further - the overhang simply
-        // falls off the paper. Record what lands outside this sheet while its
-        // fit is known, so printAllPages() can warn before the print dialog
-        // opens rather than leaving it to be found in the PDF.
-        const pageBoxPx = getPageBoxPx();
-        const offSheet = (fit && bounds && bounds.rects) ? bounds.rects.filter(r => fit.tx + r.left * fit.scale < 0 || fit.ty + r.top * fit.scale < 0 || fit.tx + r.right * fit.scale > pageBoxPx.width || fit.ty + r.bottom * fit.scale > pageBoxPx.height).length : 0;
+        // falls off the paper, or under the title block. Record what lands
+        // outside the space above the title block while its fit is known, so
+        // printAllPages() can warn before the print dialog opens rather than
+        // leaving it to be found in the PDF.
+        const visibleBottom = area.top + area.height + PRINT_GEOMETRY.footerGapMm * MM_TO_PX;
+        const offSheet = (fit && bounds && bounds.rects) ? bounds.rects.filter(r => fit.tx + r.left * fit.scale < 0 || fit.ty + r.top * fit.scale < 0 || fit.tx + r.right * fit.scale > pageBox.width || fit.ty + r.bottom * fit.scale > visibleBottom).length : 0;
         if (offSheet > 0) sheet.dataset.clippedItems = String(offSheet);
         if (offSheet > 0) sheet.dataset.pageName = pageName;
 
@@ -676,15 +698,33 @@ export function setupCanvas(app) {
         // (components, labels and shapes) or an orange stroke (connector
         // lines), so the clone is deselected before it is measured.
         canvasClone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
-        canvasClone.style.transform = fit ? fit.transform : 'none';
+        canvasClone.style.transform = fit.transform;
         sheet.appendChild(canvasClone);
 
+        // The band between the drawing and the title block's rule: the page
+        // name on the left (when there's more than one page), the cable
+        // legend on the right, lined up with the drawing's own edges. The
+        // legend used to sit in the top-right corner, on top of whatever was
+        // drawn there.
+        const strip = document.createElement('div');
+        strip.className = 'print-sheet-strip';
+        strip.style.left = area.left + 'px';
+        strip.style.width = area.width + 'px';
+        strip.style.top = (area.top + area.height + PRINT_GEOMETRY.footerGapMm * MM_TO_PX) + 'px';
+        strip.style.height = (PRINT_GEOMETRY.stripMm * MM_TO_PX) + 'px';
         if (totalPages > 1) {
             const tag = document.createElement('div');
             tag.className = 'print-sheet-tag';
             tag.textContent = `Page ${pageNum} of ${totalPages}: ${pageName}`;
-            sheet.appendChild(tag);
+            strip.appendChild(tag);
         }
+        if (printConnectorLegend && !printConnectorLegend.classList.contains('legend-empty') && printConnectorLegend.innerHTML.trim()) {
+            const legend = document.createElement('div');
+            legend.className = 'print-sheet-legend';
+            legend.innerHTML = printConnectorLegend.innerHTML;
+            strip.appendChild(legend);
+        }
+        if (strip.children.length) sheet.appendChild(strip);
         return sheet;
     }
 
@@ -1771,7 +1811,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.35').then(mod => {
+                    import('./connections.js?v=1.36').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -2021,7 +2061,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.35').then(mod => {
+        import('./connections.js?v=1.36').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -2124,7 +2164,7 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.35').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.36').then(mod => mod.clearLineSelection());
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2137,7 +2177,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.35').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.36').then(mod => mod.clearLineSelection());
         }
     });
     // ...and the grey surround past the canvas edge, which is most of the
@@ -2168,7 +2208,7 @@ export function setupCanvas(app) {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
             const iconPropertiesPanel = document.getElementById('icon-properties-panel');
             if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.35').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.36').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -2241,7 +2281,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.35').then(mod => {
+            import('./connections.js?v=1.36').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2409,7 +2449,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.35');
+            const mod = await import('./connections.js?v=1.36');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2757,7 +2797,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.35').then(mod => {
+                    import('./connections.js?v=1.36').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2779,7 +2819,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.35').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.36').then(mod => mod.clearLineSelection());
             }
         });
     }

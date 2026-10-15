@@ -3,7 +3,7 @@
 // multi-line, auto-wrapping label with rich formatting (bold/italic/
 // underline/colour/alignment/lists), rather than a single-line plain input.
 
-import { getVisibleCanvasOrigin } from './zoom.js?v=1.35';
+import { getVisibleCanvasOrigin } from './zoom.js?v=1.36';
 
 let drawingCanvas, addTextBtn, textBoxPropertiesPanel;
 let fontSizeInput, boldBtn, italicBtn, underlineBtn, colorInput;
