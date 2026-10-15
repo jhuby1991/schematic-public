@@ -82,15 +82,16 @@ export function renderConnections() {
         line.setAttribute('stroke-width', 2);
         line.style.cursor = 'pointer';
         if (selectedLineIndices.includes(i)) {
-            line.setAttribute('stroke', '#ff6600');
-            line.setAttribute('stroke-width', 4);
+            // The highlight is all CSS (svg .selected), and the line keeps its
+            // own colour attribute: a selected line used to have its stroke
+            // set to orange here, which the print copy kept - so a wire that
+            // happened to be selected when Print was pressed printed orange.
             line.classList.add('selected');
         }
         // Add hover effect, but don't override selected style
         line.addEventListener('mouseenter', (e) => {
             if (!selectedLineIndices.includes(i)) {
-                line.setAttribute('stroke', '#ff9800');
-                line.setAttribute('stroke-width', 4);
+                line.setAttribute('stroke-width', 3);
             }
         });
         line.addEventListener('mouseleave', (e) => {
@@ -124,11 +125,14 @@ export function selectLine(indices) {
     if (!Array.isArray(indices)) indices = [indices];
     selectedLineIndices = indices.filter(i => i !== null && i !== undefined);
     renderConnections();
+    document.dispatchEvent(new CustomEvent('schematic:lineselection')); // for the status bar's count
 }
 
 export function clearLineSelection() {
+    const had = selectedLineIndices.length > 0;
     selectedLineIndices = [];
     renderConnections();
+    if (had) document.dispatchEvent(new CustomEvent('schematic:lineselection'));
 }
 
 export function deleteSelectedLine() {

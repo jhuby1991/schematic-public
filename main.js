@@ -2,12 +2,14 @@
 // All JavaScript logic from custom.html, excluding dead cloud storage functions and their calls, should be placed here.
 // ... (Insert all relevant JS code from custom.html here) ... 
 
-import { setupUI } from './ui.js?v=1.34';
-import { setupCanvas } from './canvas.js?v=1.34';
-import { setupPalette } from './palette.js?v=1.34';
-import { setupStorage } from './storage.js?v=1.34';
-import { showNotification } from './utils.js?v=1.34';
-import { setupZoomPan } from './zoom.js?v=1.34';
+import { setupUI } from './ui.js?v=1.42';
+import { setupCanvas } from './canvas.js?v=1.42';
+import { setupPalette } from './palette.js?v=1.42';
+import { setupStorage } from './storage.js?v=1.42';
+import { showNotification } from './utils.js?v=1.42';
+import { setupZoomPan } from './zoom.js?v=1.42';
+import { setupStatusBar } from './statusbar.js?v=1.42';
+import { setupQuickAdd } from './quickadd.js?v=1.42';
 
 const app = {
     // Add shared state or methods here if needed
@@ -23,5 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupStorage(app);
     setupPalette(app);
     setupZoomPan();
+    setupStatusBar(app);
+    setupQuickAdd(app);
     window._restoringFromAutosave = false;
 }); 

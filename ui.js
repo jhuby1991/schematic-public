@@ -1,7 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.34';
+import { showNotification, showActionBar } from './utils.js?v=1.42';
+import { hasDrawings } from './drawings.js?v=1.42';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -14,10 +15,19 @@ const EMPTY_STATE_KEY = 'rakoSchematicEmptyStateSeen';
 const HELP_HTML = `
   <h3>Getting around</h3>
   <ul>
-    <li><b>Add a component</b>: open a group in the left-hand panel, then drag an item onto the grid.</li>
-    <li><b>Move it</b>: drag it. Components snap to the grid so things stay tidy.</li>
-    <li><b>Select several</b>: click an empty part of the grid and drag a box around them.</li>
+    <li><b>Add a component</b>: open a group in the left-hand panel, then drag an item onto the grid. Or press <b>/</b>, type part of its name and press <b>Enter</b> to drop it at the pointer. The search box at the top of the panel finds anything in it.</li>
+    <li><b>Move it</b>: drag it, or nudge it with the arrow keys (hold <b>Shift</b> for bigger steps). Components snap to the grid, and guides appear when an edge or centre lines up with another item or the middle of the page. Hold <b>Alt</b> while dragging to ignore the guides.</li>
+    <li><b>Select several</b>: drag a box around them on an empty part of the grid, or <b>Shift</b>+click each one.</li>
+    <li><b>Copy them</b>: <b>Ctrl+D</b> duplicates what's selected, wires included. <b>Ctrl+C</b> and <b>Ctrl+V</b> copy and paste.</li>
     <li><b>Remove something</b>: select it and press <b>Delete</b> or <b>Backspace</b>.</li>
+  </ul>
+
+  <h3>Zooming and moving around</h3>
+  <ul>
+    <li><b>Zoom</b>: hold <b>Ctrl</b> (<b>Cmd</b> on a Mac) and scroll, or pinch on a trackpad. It zooms in on wherever the pointer is. The magnifier buttons at the top zoom in steps.</li>
+    <li><b>Move around</b>: scroll, or drag with the middle mouse button. Without one, turn on the <b>Hand tool</b> (press <b>H</b>) and drag. Press <b>H</b> or <b>Esc</b> to put it away.</li>
+    <li><b>Fit</b> shows the whole page, plus anything placed off it. Click the percentage to go back to <b>100%</b>, the size it prints at.</li>
+    <li>Zoom only changes your view. The printout is the same whatever zoom you're at.</li>
   </ul>
 
   <h3>Wiring things together</h3>
@@ -29,7 +39,9 @@ const HELP_HTML = `
 
   <h3>Labelling</h3>
   <ul>
-    <li>Click <b>Label</b> to drop a text box anywhere, then type into it.</li>
+    <li>Click <b>Label</b> to add a text box, then type into it.</li>
+    <li><b>Move a text box</b>: click it once to select it, then drag it from anywhere. Drag the handle on its right edge to make it wider or narrower.</li>
+    <li><b>Edit its text</b>: click the selected box again, double-click it, or press <b>Enter</b>. Highlight words and use the buttons on the left to make them bold, italic, coloured and so on. With the box selected but not being edited, those buttons change all of its text. <b>Esc</b> or a click elsewhere finishes.</li>
     <li>Double-click a <b>TERM</b> or <b>STAR</b> label to cycle through its settings.</li>
     <li>Double-click a RAK to name each of its circuits.</li>
   </ul>
@@ -42,16 +54,21 @@ const HELP_HTML = `
   <h3>Saving and printing</h3>
   <ul>
     <li><b>Save File</b> downloads your drawing as a file you can keep or email. <b>Load File</b> opens it again later.</li>
-    <li>Your work is also kept in this browser automatically, so a refresh or a closed tab won't lose it.</li>
+    <li>Every drawing is also kept in this browser as you work, so a refresh or a closed tab won't lose it. <b>Recent</b> lists them (the last 20), however long ago they were made. The status bar shows when it last autosaved.</li>
     <li><b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to get a PDF.</li>
   </ul>
 
   <h3>Keyboard shortcuts</h3>
   <ul>
     <li><b>Space</b>: switch between drawing cables and moving components</li>
+    <li><b>+</b> / <b>&minus;</b>: zoom in / out. <b>0</b>: back to 100%. <b>Ctrl + scroll</b>: zoom at the pointer</li>
+    <li><b>H</b>: Hand tool, drag to move around the drawing</li>
     <li><b>Q W A S D R F</b>: change cable colour while drawing</li>
     <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b>: undo / redo</li>
-    <li><b>Ctrl+C</b> / <b>Ctrl+V</b>: copy / paste</li>
+    <li><b>Ctrl+C</b> / <b>Ctrl+X</b> / <b>Ctrl+V</b>: copy / cut / paste (any number of items and wires)</li>
+    <li><b>Ctrl+D</b>: duplicate what's selected</li>
+    <li><b>Arrow keys</b>: nudge what's selected one grid square (<b>Shift</b>: five)</li>
+    <li><b>/</b>: add a component by name, at the pointer</li>
     <li><b>Delete</b>: remove what's selected</li>
   </ul>
 
@@ -144,6 +161,12 @@ const TOUR_STEPS = [
         body: 'Drag components here. They snap to the grid automatically, so everything stays aligned.'
     },
     {
+        selector: '#zoom-bar',
+        placement: 'bottom',
+        title: 'Zoom and move around',
+        body: 'Zoom in for detail and out for the whole job: use these buttons, or hold <b>Ctrl</b> and scroll. To move around, scroll, drag with the middle mouse button, or turn on the Hand tool (<b>H</b>) and drag. Zoom never changes the printout.'
+    },
+    {
         selector: '#pageTabsBar',
         placement: 'bottom',
         title: 'Pages',
@@ -165,7 +188,7 @@ const TOUR_STEPS = [
         selector: '#drawing-toolbar',
         placement: 'right',
         title: 'Labels',
-        body: 'Click <b>Label</b> to drop a text box anywhere on the drawing, then type into it.'
+        body: 'Click <b>Label</b> to add a text box, then type into it. Click a text box once to select and move it; click it again (or double-click) to edit its text.'
     },
     {
         selector: '#project-details',
@@ -177,7 +200,7 @@ const TOUR_STEPS = [
         selector: '#toolbarRightGroup',
         placement: 'bottom',
         title: 'Save, undo and print',
-        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
+        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Recent</b> lists every drawing kept automatically in this browser. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
     }
 ];
 
@@ -423,10 +446,8 @@ export function openWelcome(forced = false) {
 function maybeShowWelcome() {
     let welcomeSeen = false;
     try { welcomeSeen = localStorage.getItem(WELCOME_KEY) === '1'; } catch (e) { welcomeSeen = true; }
-    // Don't interrupt someone who is mid-recovery of an autosaved drawing.
-    let hasAutosave = false;
-    try { hasAutosave = !!localStorage.getItem('schematicAutoSave'); } catch (e) {}
-    if (hasAutosave) return;
+    // Don't talk over the offer to pick up an earlier drawing.
+    if (hasDrawings()) return;
 
     if (!welcomeSeen) {
         setTimeout(() => openWelcome(), 400);
@@ -510,7 +531,83 @@ function setupEmptyState() {
  * Setup
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Tooltips
+ * The toolbar's hints, shown quickly in the app's own style instead of the
+ * browser's (which wait about a second and can't be styled). Once one is
+ * showing, moving along the toolbar swaps instantly. Shortcut keys in
+ * brackets at the end of a hint are drawn as keys.
+ * ------------------------------------------------------------------ */
+function setupTooltips() {
+    const SELECTOR = '.toolbar [title], #drawing-toolbar [title], #text-box-properties-panel [title], #icon-properties-panel [title], #pageTabsBar [title]';
+    const tip = document.createElement('div');
+    tip.id = 'appTooltip';
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    let showTimer = null, hideTimer = null, warmUntil = 0, current = null;
+
+    // Move each title to data-tip (keeping it as the accessible name).
+    const adopt = (el) => {
+        const t = el.getAttribute('title');
+        if (!t) return;
+        el.dataset.tip = t;
+        if (!el.getAttribute('aria-label') && !el.textContent.trim()) el.setAttribute('aria-label', t);
+        el.removeAttribute('title');
+    };
+    const adoptAll = () => document.querySelectorAll(SELECTOR).forEach(adopt);
+    adoptAll();
+    // Some titles are added later (page tabs, re-rendered buttons). Only the
+    // chrome is watched - not the canvas, which changes on every drag frame.
+    const observer = new MutationObserver(adoptAll);
+    document.querySelectorAll('.toolbar, #drawing-toolbar, #text-box-properties-panel, #icon-properties-panel, #pageTabsBar')
+        .forEach(el => observer.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] }));
+
+    const escapeHtml = (str) => str.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    function show(el) {
+        const text = el.dataset.tip;
+        if (!text) return;
+        // "Zoom in (+, or Ctrl + scroll)" -> text + key chips
+        const m = text.match(/^(.*?)\s*\(([^()]{1,24})\)\s*(.*)$/);
+        tip.innerHTML = m
+            ? `${escapeHtml(m[1])} <span class="tip-keys">${escapeHtml(m[2])}</span>${m[3] ? ' ' + escapeHtml(m[3]) : ''}`
+            : escapeHtml(text);
+        tip.classList.add('visible');
+        const r = el.getBoundingClientRect();
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let left = r.left + r.width / 2 - tw / 2;
+        let top = r.bottom + 8;
+        if (top + th > window.innerHeight - 8) top = r.top - th - 8;
+        left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+        tip.style.left = left + 'px';
+        tip.style.top = top + 'px';
+        current = el;
+    }
+    function hide() {
+        clearTimeout(showTimer);
+        tip.classList.remove('visible');
+        if (current) warmUntil = Date.now() + 500;
+        current = null;
+    }
+    document.addEventListener('pointerover', (e) => {
+        const el = e.target.closest && e.target.closest('[data-tip]');
+        if (!el || el === current) return;
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+        if (Date.now() < warmUntil || current) show(el);
+        else showTimer = setTimeout(() => show(el), 350);
+    });
+    document.addEventListener('pointerout', (e) => {
+        const el = e.target.closest && e.target.closest('[data-tip]');
+        if (!el) return;
+        if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+        clearTimeout(showTimer);
+        hideTimer = setTimeout(hide, 60);
+    });
+    ['pointerdown', 'keydown', 'scroll', 'blur'].forEach(t => window.addEventListener(t, hide, true));
+}
+
 export function setupUI(app) {
+    setupTooltips();
     const helpBtn = document.getElementById('helpBtn');
     if (helpBtn) helpBtn.addEventListener('click', openHelp);
 
