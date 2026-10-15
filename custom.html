@@ -839,10 +839,6 @@
 
 
         @media print {
-            :root {
-                --component-print-scale: 0.99; /* UPDATED: Was 0.9, now 0.99 for 10% larger objects/text */
-            }
-
             @page {
                 size: A4 landscape;
                 margin: 0.2cm; 
@@ -971,10 +967,14 @@
                 flex-shrink: 0;
             }
 
+            /* Components print at exactly their on-screen size and place, so
+               a wire drawn to an edge still meets it on paper. They used to
+               be scaled to 99% from their top-left corner, and every RAK8 and
+               RAK-Link bar the first was also lifted 6px (a stacking overlap
+               whose :first-of-type selector matched almost nothing) - which
+               opened a 1-7px gap where wires met their bottom or right edge. */
             .canvas-item[data-type] {
                 border: none !important;
-                transform: var(--print-translate, translateY(0)) scale(var(--component-print-scale));
-                transform-origin: top left;
             }
             .canvas-item[data-type] img {
                 transform: none; 
@@ -1002,18 +1002,12 @@
                 border-width: 1px !important; 
                 border-color: #000 !important;
                 background-color: transparent !important;
-                /* If .canvas-shape gets .canvas-item[data-type] class or similar scaling, it will scale. Otherwise, it won't. */
-                /* Assuming shapes might also be considered "objects" and should scale: */
-                transform: scale(var(--component-print-scale)); 
-                transform-origin: top left;
             }
 
             .canvas-text-box {
                 border: 1px solid transparent !important;
                 background-color: transparent !important;
                 overflow: visible !important; 
-                transform: scale(var(--component-print-scale)); /* ADDED: Scale text boxes */
-                transform-origin: top left; /* ADDED: Scale text boxes from top left */
             }
             .canvas-text-box textarea {
                 resize: none !important;
@@ -1068,12 +1062,7 @@
                 padding: 4mm;
                 margin: 0;
             }
-            .keypad-term-star-label { font-size: 5pt !important; z-index: 4 !important;} /* Scaled by parent if parent is scaled */
-            /* Overlap stacked RAK8 and RAK-LINK units by 6px when printing (using transform for absolutely positioned elements) */
-            .canvas-item[data-type="RAK8"]:not(:first-of-type),
-            .canvas-item[data-type="RAKLink"]:not(:first-of-type) {
-                --print-translate: translateY(-6px);
-            }
+            .keypad-term-star-label { font-size: 5pt !important; z-index: 4 !important;}
             body::after {
                 content: '';
                 position: fixed;
@@ -2021,7 +2010,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.38</span>
+                <span class="app-version" title="Tool version">v1.39</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2388,6 +2377,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.38"></script>
+    <script type="module" src="main.js?v=1.39"></script>
 </body>
 </html>
