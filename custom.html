@@ -591,6 +591,40 @@
          .canvas-text-box:hover {
             border-color: #007bff;
         }
+        /* Text boxes (text.js): select one to move it - from anywhere on it -
+           then click it again, double-click it or press Enter to edit. */
+        .canvas-text-box .text-editable { cursor: inherit; }
+        .canvas-text-box.editing { cursor: auto; }
+        .canvas-text-box.editing .text-editable {
+            cursor: text;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+        #drawing-canvas .canvas-text-box.editing {
+            outline: 2px dashed #ff6600 !important;
+            outline-offset: 1px;
+        }
+        .text-box-resize {
+            display: none;
+            position: absolute;
+            top: 50%;
+            right: -6px;
+            width: 9px;
+            height: 18px;
+            margin-top: -9px;
+            background: #fff;
+            border: 1px solid #ff6600;
+            border-radius: 2px;
+            cursor: ew-resize;
+            z-index: 5;
+        }
+        .canvas-text-box.selected .text-box-resize,
+        .canvas-text-box.editing .text-box-resize { display: block; }
+        #drawing-canvas-wrapper.hand-mode .text-box-resize { display: none !important; }
+        @media print {
+            .text-box-resize { display: none !important; }
+            .canvas-text-box { outline: none !important; }
+        }
         .canvas-text-box textarea {
             width: 100%;
             height: 100%;
@@ -1542,8 +1576,9 @@
             #grid-svg {
                 display: none !important;
             }
-            /* Hide placeholder text on generic labels when empty */
-            .generic-label-editable:empty:before {
+            /* Hide placeholder text on empty generic labels and text boxes */
+            .generic-label-editable:empty:before,
+            .text-editable:empty:before {
                 content: none !important;
             }
         }
@@ -1986,7 +2021,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.36</span>
+                <span class="app-version" title="Tool version">v1.37</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2353,6 +2388,6 @@
     <img id="rakoPrintLogo" src="https://s.myrako.com/Schematic/Configure/your_logo.png" alt="Rako Logo" style="display:none;">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.36"></script>
+    <script type="module" src="main.js?v=1.37"></script>
 </body>
 </html>

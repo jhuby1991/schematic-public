@@ -3,7 +3,7 @@
 // multi-line, auto-wrapping label with rich formatting (bold/italic/
 // underline/colour/alignment/lists), rather than a single-line plain input.
 
-import { getVisibleCanvasOrigin } from './zoom.js?v=1.36';
+import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.37';
 
 let drawingCanvas, addTextBtn, textBoxPropertiesPanel;
 let fontSizeInput, boldBtn, italicBtn, underlineBtn, colorInput;
@@ -82,9 +82,93 @@ function withSelectedTextBox(fn) {
     if (itemData && itemData.type === 'TextBox') fn(itemData);
 }
 
-function focusEditable(itemData) {
-    const editable = itemData.element.querySelector('.text-editable');
-    if (editable) editable.focus();
+/* ------------------------------------------------------------------ *
+ * Moving vs editing
+ *
+ * A text box works the way one does in slide software. Click it to
+ * select it: drag from anywhere on it to move it, and the formatting
+ * buttons apply to all of its text. Click it again, double-click it, or
+ * press Enter to edit: then the text takes a caret, dragging selects
+ * text, and the formatting buttons apply to just what is highlighted.
+ * Esc or a click elsewhere finishes editing.
+ *
+ * It used to be editable all the time, so only its 5px border would move
+ * it, and a click into the text never selected the box - the formatting
+ * buttons then had no box to act on and did nothing.
+ * ------------------------------------------------------------------ */
+let editingBox = null;   // the box whose text is being edited, if any
+let savedRange = null;   // the last selection inside it, kept while a panel control has focus
+
+const getEditable = (box) => box.querySelector('.text-editable');
+
+function isEditing(box) {
+    return !!box && box === editingBox && box.isConnected;
+}
+
+function selectRange(range) {
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+
+export function startEditing(box, { clientX = null, clientY = null, word = false } = {}) {
+    if (!box || !box.isConnected) return;
+    if (editingBox && editingBox !== box) stopEditing();
+    // The panel's buttons act on the selected box, so make sure it is this one.
+    if (!(selectedItems.size === 1 && selectedItems.has(box.id)) && typeof window.setSelectedObject === 'function') {
+        window.setSelectedObject(box);
+    }
+    const editable = getEditable(box);
+    const already = editingBox === box;
+    editingBox = box;
+    editable.contentEditable = 'true';
+    box.classList.add('editing');
+    editable.focus();
+    if (already && clientX == null) return;
+    // Caret where the pointer is, if it's over the text; otherwise at the end.
+    let range = null;
+    if (clientX != null && document.caretRangeFromPoint) range = document.caretRangeFromPoint(clientX, clientY);
+    if (!range || !editable.contains(range.startContainer)) {
+        range = document.createRange();
+        range.selectNodeContents(editable);
+        range.collapse(false);
+    }
+    selectRange(range);
+    if (word) {
+        const sel = window.getSelection();
+        if (sel && sel.modify) { sel.modify('move', 'backward', 'word'); sel.modify('extend', 'forward', 'word'); }
+    }
+    updateToolbarState();
+}
+
+export function stopEditing() {
+    const box = editingBox;
+    editingBox = null;
+    savedRange = null;
+    if (!box) return;
+    const editable = getEditable(box);
+    box.classList.remove('editing');
+    if (editable) {
+        editable.contentEditable = 'false';
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && editable.contains(sel.anchorNode)) sel.removeAllRanges();
+        if (document.activeElement === editable) editable.blur();
+        const itemData = itemsOnCanvas.get(box.id);
+        if (itemData) syncTextFromDom(itemData);
+    }
+    updateToolbarState();
+}
+
+/** Show which styles apply where the caret is: B / I / U and alignment light up. */
+function updateToolbarState() {
+    const editing = isEditing(editingBox);
+    const state = (cmd) => { try { return editing && document.queryCommandState(cmd); } catch (e) { return false; } };
+    [[boldBtn, 'bold'], [italicBtn, 'italic'], [underlineBtn, 'underline'],
+     [alignLeftBtn, 'justifyLeft'], [alignCenterBtn, 'justifyCenter'], [alignRightBtn, 'justifyRight'],
+     [bulletListBtn, 'insertUnorderedList'], [numberListBtn, 'insertOrderedList']].forEach(([btn, cmd]) => {
+        if (btn) btn.classList.toggle('active', !!state(cmd));
+    });
 }
 
 export function initTextTool(canvasEl, toolbarEl, propertiesPanelEl, controls, _itemsOnCanvas, _selectedItems, makeItemDraggable, saveState) {
@@ -115,9 +199,44 @@ export function initTextTool(canvasEl, toolbarEl, propertiesPanelEl, controls, _
             const at = getVisibleCanvasOrigin();
             const box = createTextBoxOnCanvas(at.x, at.y, '', null, false, { hasBackground: false });
             if (typeof window.setSelectedObject === 'function') window.setSelectedObject(box);
-            setTimeout(() => focusEditable(itemsOnCanvas.get(box.id)), 0);
+            setTimeout(() => startEditing(box), 0); // ready to type straight away
         });
     }
+
+    // Keep track of the highlighted text while editing, so a panel control
+    // that takes focus (the colour picker, the font size box) can still
+    // apply to it, and keep B / I / U showing what's under the caret.
+    document.addEventListener('selectionchange', () => {
+        if (!isEditing(editingBox)) return;
+        const sel = window.getSelection();
+        const editable = getEditable(editingBox);
+        if (sel && sel.rangeCount && editable.contains(sel.anchorNode)) {
+            savedRange = sel.getRangeAt(0).cloneRange();
+            updateToolbarState();
+        }
+    });
+
+    // A press anywhere other than the box being edited or its panel
+    // finishes editing (the box stays selected if it was the target).
+    document.addEventListener('mousedown', (e) => {
+        if (!editingBox) return;
+        if (!editingBox.isConnected) { editingBox = null; savedRange = null; updateToolbarState(); return; }
+        if (editingBox.contains(e.target)) return;
+        if (textBoxPropertiesPanel && textBoxPropertiesPanel.contains(e.target)) return;
+        stopEditing();
+    }, true);
+
+    // Enter (or F2) on a selected text box starts editing it.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== 'F2') return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'BUTTON' || active.tagName === 'SELECT' || active.isContentEditable)) return;
+        withSelectedTextBox(itemData => {
+            e.preventDefault();
+            startEditing(itemData.element);
+        });
+    });
 
     // --- Whole-box properties (font size, background) ---
     if (fontSizeInput) {
@@ -142,19 +261,46 @@ export function initTextTool(canvasEl, toolbarEl, propertiesPanelEl, controls, _
         });
     }
 
-    // --- Rich formatting, applied to the current selection within the box ---
+    // --- Rich formatting ---
+    // While editing: applies to the highlighted text (or the word at the
+    // caret, as a word processor does). With the box selected but not being
+    // edited: applies to all of its text.
     function applyCommand(command, value = null) {
         withSelectedTextBox(itemData => {
-            focusEditable(itemData);
-            document.execCommand(command, false, value);
+            const box = itemData.element;
+            const editable = getEditable(box);
+            if (!editable) return;
+            if (isEditing(box)) {
+                editable.focus();
+                if (savedRange && editable.contains(savedRange.commonAncestorContainer)) selectRange(savedRange);
+                document.execCommand(command, false, value);
+            } else {
+                editable.contentEditable = 'true';
+                editable.focus();
+                const all = document.createRange();
+                all.selectNodeContents(editable);
+                selectRange(all);
+                document.execCommand(command, false, value);
+                window.getSelection().removeAllRanges();
+                editable.contentEditable = 'false';
+                editable.blur();
+            }
             syncTextFromDom(itemData);
+            updateToolbarState();
             _saveState();
         });
     }
+    // These buttons must not take focus: clicking one used to move focus off
+    // the text, which could drop the highlighted selection before the
+    // command ran.
+    const keepFocus = (btn) => btn && btn.addEventListener('mousedown', (e) => e.preventDefault());
+    [boldBtn, italicBtn, underlineBtn, alignLeftBtn, alignCenterBtn, alignRightBtn, bulletListBtn, numberListBtn].forEach(keepFocus);
     if (boldBtn) boldBtn.addEventListener('click', () => applyCommand('bold'));
     if (italicBtn) italicBtn.addEventListener('click', () => applyCommand('italic'));
     if (underlineBtn) underlineBtn.addEventListener('click', () => applyCommand('underline'));
-    if (colorInput) colorInput.addEventListener('input', () => applyCommand('foreColor', colorInput.value));
+    // On change (when the picker closes), not on every input: re-focusing the
+    // text mid-pick would close the colour picker under the pointer.
+    if (colorInput) colorInput.addEventListener('change', () => applyCommand('foreColor', colorInput.value));
     if (alignLeftBtn) alignLeftBtn.addEventListener('click', () => applyCommand('justifyLeft'));
     if (alignCenterBtn) alignCenterBtn.addEventListener('click', () => applyCommand('justifyCenter'));
     if (alignRightBtn) alignRightBtn.addEventListener('click', () => applyCommand('justifyRight'));
@@ -185,7 +331,7 @@ export function createTextBoxOnCanvas(x, y, text = "", existingId = null, skipSa
 
     const editable = document.createElement('div');
     editable.className = 'text-editable';
-    editable.contentEditable = 'true';
+    editable.contentEditable = 'false'; // until it's being edited - see startEditing
     editable.style.fontSize = `${fontSize}px`;
     editable.style.outline = 'none';
     editable.style.whiteSpace = 'pre-wrap';
@@ -202,7 +348,16 @@ export function createTextBoxOnCanvas(x, y, text = "", existingId = null, skipSa
     editable.innerHTML = initialHtml;
     editable.setAttribute('data-placeholder', 'Type here...');
 
-    editable.addEventListener('mousedown', (e) => e.stopPropagation());
+    // While editing, a press in the text is for the caret and highlighting,
+    // so it must not reach the box's drag handler. Otherwise it does: the
+    // whole box moves.
+    editable.addEventListener('mousedown', (e) => { if (isEditing(textBoxDiv)) e.stopPropagation(); });
+    editable.addEventListener('blur', (e) => {
+        if (!isEditing(textBoxDiv)) return;
+        if (!document.hasFocus()) return; // switching windows - carry on when back
+        if (e.relatedTarget && textBoxPropertiesPanel && textBoxPropertiesPanel.contains(e.relatedTarget)) return; // font size, colour
+        stopEditing();
+    });
     editable.addEventListener('input', () => {
         const itemData = itemsOnCanvas.get(id);
         if (itemData) syncTextFromDom(itemData);
@@ -233,17 +388,62 @@ export function createTextBoxOnCanvas(x, y, text = "", existingId = null, skipSa
             // Prevent backspace/delete from bubbling up and deleting the object
             e.stopPropagation();
         } else if (e.key === 'Escape') {
-            editable.blur();
+            e.preventDefault();
+            e.stopPropagation();
+            stopEditing(); // the box stays selected, ready to move or delete
         }
     });
     textBoxDiv.appendChild(editable);
 
+    // Drag the handle on the right edge to change the box's width; the text
+    // rewraps to fit. The right edge snaps to the grid.
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'text-box-resize';
+    resizeHandle.title = 'Drag to change the width';
+    resizeHandle.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startWidth = textBoxDiv.offsetWidth;
+        const left = parseFloat(textBoxDiv.style.left) || 0;
+        const onMove = (ev) => {
+            const raw = startWidth + (ev.clientX - startX) / (getZoom() || 1);
+            const right = Math.round((left + raw) / 10) * 10;
+            textBoxDiv.style.width = Math.max(40, right - left) + 'px';
+        };
+        const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            const itemData = itemsOnCanvas.get(id);
+            if (itemData) itemData.width = parseInt(textBoxDiv.style.width, 10);
+            _saveState();
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    });
+    textBoxDiv.appendChild(resizeHandle);
+
+    let pressedWhileSelected = null; // for "click a selected box again to edit it"
     textBoxDiv.addEventListener('mousedown', (e) => {
-        if (e.target === textBoxDiv) {
-            if (typeof window.setSelectedObject === 'function') {
-                window.setSelectedObject(textBoxDiv, e.shiftKey);
-            }
-        }
+        if (e.button !== 0 || isEditing(textBoxDiv)) return;
+        const soleSelection = selectedItems.size === 1 && selectedItems.has(id) && textBoxDiv.classList.contains('selected');
+        pressedWhileSelected = soleSelection && !e.shiftKey ? { x: e.clientX, y: e.clientY } : null;
+        // Already part of the selection: leave it alone, so a group drag works.
+        if (textBoxDiv.classList.contains('selected') && !e.shiftKey) return;
+        if (typeof window.setSelectedObject === 'function') window.setSelectedObject(textBoxDiv, e.shiftKey);
+    });
+    textBoxDiv.addEventListener('mouseup', (e) => {
+        const press = pressedWhileSelected;
+        pressedWhileSelected = null;
+        if (!press || e.button !== 0 || isEditing(textBoxDiv)) return;
+        if (Math.abs(e.clientX - press.x) > 3 || Math.abs(e.clientY - press.y) > 3) return; // that was a move
+        startEditing(textBoxDiv, { clientX: e.clientX, clientY: e.clientY });
+    });
+    textBoxDiv.addEventListener('dblclick', (e) => {
+        if (e.target === resizeHandle) return;
+        e.stopPropagation();
+        startEditing(textBoxDiv, { clientX: e.clientX, clientY: e.clientY, word: true });
     });
 
     drawingCanvas.appendChild(textBoxDiv);

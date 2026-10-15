@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.36';
+import { showNotification, showActionBar } from './utils.js?v=1.37';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -37,7 +37,9 @@ const HELP_HTML = `
 
   <h3>Labelling</h3>
   <ul>
-    <li>Click <b>Label</b> to drop a text box anywhere, then type into it.</li>
+    <li>Click <b>Label</b> to add a text box, then type into it.</li>
+    <li><b>Move a text box</b>: click it once to select it, then drag it from anywhere. Drag the handle on its right edge to make it wider or narrower.</li>
+    <li><b>Edit its text</b>: click the selected box again, double-click it, or press <b>Enter</b>. Highlight words and use the buttons on the left to make them bold, italic, coloured and so on. With the box selected but not being edited, those buttons change all of its text. <b>Esc</b> or a click elsewhere finishes.</li>
     <li>Double-click a <b>TERM</b> or <b>STAR</b> label to cycle through its settings.</li>
     <li>Double-click a RAK to name each of its circuits.</li>
   </ul>
@@ -181,7 +183,7 @@ const TOUR_STEPS = [
         selector: '#drawing-toolbar',
         placement: 'right',
         title: 'Labels',
-        body: 'Click <b>Label</b> to drop a text box anywhere on the drawing, then type into it.'
+        body: 'Click <b>Label</b> to add a text box, then type into it. Click a text box once to select and move it; click it again (or double-click) to edit its text.'
     },
     {
         selector: '#project-details',

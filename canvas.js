@@ -1,12 +1,12 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.36';
-import { doAutosave } from './storage.js?v=1.36';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.36';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.36';
-import { showToast, showConfirm } from './utils.js?v=1.36';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.36';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.37';
+import { doAutosave } from './storage.js?v=1.37';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.37';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.37';
+import { showToast, showConfirm } from './utils.js?v=1.37';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.37';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -341,7 +341,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.36').then(mod => {
+                import('./connections.js?v=1.37').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -559,7 +559,6 @@ export function setupCanvas(app) {
        anything past the page guide was lost off the edge of the sheet.
        ------------------------------------------------------------------ */
     const PRINT_MIN_SCALE = 0.5;   // below this the drawing is too small to read
-    const PRINT_PADDING_PX = 8;
     let lastPrintScale = 1;
 
     function getCanvasScale() {
@@ -571,6 +570,26 @@ export function setupCanvas(app) {
         if (!m) return 1;
         const a = parseFloat(m[1].split(',')[0]);
         return (Number.isFinite(a) && a !== 0) ? a : 1;
+    }
+
+    /** Screen rect covering just the text in a text box, or null if it has none. */
+    function textExtent(box) {
+        const editable = box.querySelector('.text-editable');
+        if (!editable) return null;
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!node.textContent.trim()) continue;
+            range.selectNodeContents(node);
+            for (const rect of range.getClientRects()) {
+                if (!rect.width && !rect.height) continue;
+                l = Math.min(l, rect.left); t = Math.min(t, rect.top);
+                r = Math.max(r, rect.right); b = Math.max(b, rect.bottom);
+            }
+        }
+        if (l === Infinity) return null; // an empty label prints nothing
+        return { left: l, top: t, right: r, bottom: b, width: r - l, height: b - t };
     }
 
     /** Bounding box of everything drawn, in untransformed canvas pixels. */
@@ -592,10 +611,14 @@ export function setupCanvas(app) {
             if (b > maxY) maxY = b;
         };
 
-        // Components, text boxes and shapes (rect includes overflowing labels)
+        // Components, text boxes and shapes
         canvasEl.querySelectorAll('.canvas-item').forEach(el => {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) return;
+            // A text box counts as its words, not its box. The box prints
+            // invisible and is usually far wider than its text (200px by
+            // default), so a short label placed near the right edge used to
+            // shrink the whole printed page when only empty space overhung.
+            const r = el.classList.contains('canvas-text-box') ? textExtent(el) : el.getBoundingClientRect();
+            if (!r || (r.width === 0 && r.height === 0)) return;
             include(
                 (r.left   - canvasRect.left) / scale,
                 (r.top    - canvasRect.top)  / scale,
@@ -625,9 +648,8 @@ export function setupCanvas(app) {
      * printed sheet, so when the whole drawing sits inside it, print 1:1 with
      * the guide's corner on the drawing area's corner, and every object lands
      * exactly where it was placed. Only when something spills outside does
-     * this fall back to framing the drawing itself, scaled and centred in the
-     * drawing area - which moves it relative to the page, but keeps it on the
-     * paper. An empty page is placed 1:1 too.
+     * this fall back to shrinking the page to fit (computeFitTransform). An
+     * empty page is placed 1:1 too.
      */
     const GUIDE_TOLERANCE_PX = 0.5;
     function computePageTransform(bounds, area) {
@@ -641,24 +663,29 @@ export function setupCanvas(app) {
         return computeFitTransform(bounds, area);
     }
 
-    /** Pure fit math: bounds + printable area -> a translate+scale transform. */
+    /**
+     * Shrink-to-fit, for a drawing that spills past the page guide. The frame
+     * is the page itself, stretched just far enough to take in whatever
+     * spills over, scaled down into the drawing area from the page's own
+     * top-left corner. Everything keeps its place relative to the page: a
+     * slight overhang shrinks the page slightly, and nothing else moves.
+     *
+     * It used to frame only the drawn items and centre them, so a page whose
+     * drawing sat towards one side jumped to the middle of the sheet - and
+     * every object moved - the moment anything (often a text box) poked past
+     * an edge.
+     */
     function computeFitTransform(bounds, area) {
-        if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+        const left = Math.min(0, bounds.x);
+        const top = Math.min(0, bounds.y);
+        const right = Math.max(area.width, bounds.x + bounds.width);
+        const bottom = Math.max(area.height, bounds.y + bounds.height);
 
-        const targetW = area.width  - PRINT_PADDING_PX * 2;
-        const targetH = area.height - PRINT_PADDING_PX * 2;
-
-        // Shrink to fit, but never enlarge: a two-component drawing should not
-        // print blown up across the whole sheet.
-        let scale = Math.min(targetW / bounds.width, targetH / bounds.height, 1);
+        let scale = Math.min(area.width / (right - left), area.height / (bottom - top), 1);
         if (scale < PRINT_MIN_SCALE) scale = PRINT_MIN_SCALE;
 
-        // Centre whatever room is left over.
-        const offsetX = PRINT_PADDING_PX + Math.max(0, (targetW - bounds.width  * scale) / 2);
-        const offsetY = PRINT_PADDING_PX + Math.max(0, (targetH - bounds.height * scale) / 2);
-
-        const tx = area.left + offsetX - bounds.x * scale;
-        const ty = area.top + offsetY - bounds.y * scale;
+        const tx = area.left - left * scale;
+        const ty = area.top - top * scale;
         return { scale, tx, ty, transform: `translate(${tx}px, ${ty}px) scale(${scale})` };
     }
 
@@ -697,7 +724,7 @@ export function setupCanvas(app) {
         // when Print was pressed would otherwise print with its orange ring
         // (components, labels and shapes) or an orange stroke (connector
         // lines), so the clone is deselected before it is measured.
-        canvasClone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+        canvasClone.querySelectorAll('.selected, .editing').forEach(el => el.classList.remove('selected', 'editing'));
         canvasClone.style.transform = fit.transform;
         sheet.appendChild(canvasClone);
 
@@ -1756,6 +1783,7 @@ export function setupCanvas(app) {
         // Prevent native drag-and-drop UI
         target.addEventListener('dragstart', e => e.preventDefault());
         let isDragging = false, dragStartX, dragStartY;
+        let dragRoomLeft = Infinity, dragRoomTop = Infinity; // how far the selection can go left/up
         let groupDragData = null;
         let groupLineDragData = null;
         // Was draw-line mode armed when this gesture started? A component
@@ -1780,8 +1808,12 @@ export function setupCanvas(app) {
                 }
             }
             const coords = getCanvasCoordinates(e);
-            const deltaX = coords.x - dragStartX;
-            const deltaY = coords.y - dragStartY;
+            // Never past the canvas's left or top edge, where nothing can be
+            // seen and anything there drags the whole printed page out of
+            // place (shrink-to-fit). Applied to the group as one, so a
+            // multi-selection keeps its shape against the edge.
+            const deltaX = Math.max(coords.x - dragStartX, -dragRoomLeft);
+            const deltaY = Math.max(coords.y - dragStartY, -dragRoomTop);
             // Move all selected objects by the mouse delta
             groupDragData.forEach(data => {
                 const snapped = snapToGrid(data.startLeft + deltaX, data.startTop + deltaY);
@@ -1811,7 +1843,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.36').then(mod => {
+                    import('./connections.js?v=1.37').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1910,6 +1942,8 @@ export function setupCanvas(app) {
                     });
                 }
             }
+            dragRoomLeft = Math.max(0, Math.min(...groupDragData.map(d => d.startLeft), ...groupLineDragData.map(l => Math.min(l.x1, l.x2))));
+            dragRoomTop = Math.max(0, Math.min(...groupDragData.map(d => d.startTop), ...groupLineDragData.map(l => Math.min(l.y1, l.y2))));
             isDragging = false;
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
@@ -2061,7 +2095,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.36').then(mod => {
+        import('./connections.js?v=1.37').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -2164,7 +2198,7 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.36').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.37').then(mod => mod.clearLineSelection());
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2177,7 +2211,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.36').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.37').then(mod => mod.clearLineSelection());
         }
     });
     // ...and the grey surround past the canvas edge, which is most of the
@@ -2196,6 +2230,13 @@ export function setupCanvas(app) {
     let clipboardObject = null;
     // Keyboard delete, copy, paste for object or line
     document.addEventListener('keydown', (e) => {
+        // Not while typing: in a label, Backspace deletes a letter, Ctrl+A
+        // selects the text, Ctrl+V pastes text. Without this, typing in a
+        // generic's label could delete other selected objects, Ctrl+A
+        // selected every object instead of the label's text, and Ctrl+V
+        // dropped a copied component on the canvas.
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
         // Delete
         if (e.key === 'Delete' || e.key === 'Backspace') {
             selectedObjects.forEach(obj => {
@@ -2208,7 +2249,7 @@ export function setupCanvas(app) {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
             const iconPropertiesPanel = document.getElementById('icon-properties-panel');
             if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.36').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.37').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -2275,13 +2316,21 @@ export function setupCanvas(app) {
         // Select All (Ctrl+A or Cmd+A)
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
             e.preventDefault();
-            // Select all objects
-            Array.from(document.querySelectorAll('.canvas-item')).forEach(obj => {
+            // Select all objects - the top-level ones, so a generic is
+            // selected by its wrapper (as clicking it does), and Delete
+            // removes the whole thing rather than leaving its label behind.
+            Array.from(drawingCanvas.children).forEach(obj => {
+                if (obj.classList.contains('generic-wrapper')) {
+                    const inner = obj.querySelector('.canvas-item');
+                    if (inner) inner.classList.add('selected');
+                } else if (!obj.classList.contains('canvas-item')) {
+                    return;
+                }
                 obj.classList.add('selected');
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.36').then(mod => {
+            import('./connections.js?v=1.37').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2409,9 +2458,12 @@ export function setupCanvas(app) {
         console.debug('[renderPageContent] called with:', pageData);
         isRestoring = true;
         if (!pageData) { isRestoring = false; return; }
-        // Clear all objects
+        // Clear all objects. Generic components sit inside a wrapper with
+        // their label and rotate handle: removing only the .canvas-item inside
+        // it left the wrapper and its label behind, so a generic's label
+        // turned up on every tab (and every printed page) after its own.
         if (drawingCanvas) {
-            Array.from(drawingCanvas.querySelectorAll('.canvas-item')).forEach(el => el.remove());
+            Array.from(drawingCanvas.querySelectorAll(':scope > .generic-wrapper, .canvas-item')).forEach(el => el.remove());
         }
         if (svgOverlay) {
             svgOverlay.innerHTML = '';
@@ -2449,7 +2501,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.36');
+            const mod = await import('./connections.js?v=1.37');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2797,7 +2849,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.36').then(mod => {
+                    import('./connections.js?v=1.37').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2819,7 +2871,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.36').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.37').then(mod => mod.clearLineSelection());
             }
         });
     }
