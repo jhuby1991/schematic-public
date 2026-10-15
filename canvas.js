@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.40';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.41';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.40';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.40';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.40';
-import { showToast, showConfirm } from './utils.js?v=1.40';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.40';
+import { doAutosave } from './storage.js?v=1.41';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.41';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.41';
+import { showToast, showConfirm } from './utils.js?v=1.41';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.41';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -773,10 +773,11 @@ export function setupCanvas(app) {
      * not localhost) could still be mid-fetch when window.print() captures
      * the page, showing up cut off / partially rendered.
      */
-    function waitForImages(sheets, timeoutMs = 4000) {
+    function waitForImages(nodes, timeoutMs = 4000) {
         const pending = [];
-        sheets.forEach(sheet => {
-            Array.from(sheet.querySelectorAll('img')).forEach(img => { if (!img.complete) pending.push(img); });
+        nodes.forEach(node => {
+            const imgs = node.tagName === 'IMG' ? [node] : Array.from(node.querySelectorAll('img'));
+            imgs.forEach(img => { if (!img.complete) pending.push(img); });
         });
         if (pending.length === 0) return Promise.resolve();
         return Promise.race([
@@ -864,7 +865,9 @@ export function setupCanvas(app) {
                     last.style.breakAfter = 'auto';
                 }
 
-                await waitForImages(sheets); // let every sheet's component images finish loading first
+                // Every sheet's component images, plus the print-only artwork
+                // (background logo, title block logos), finish loading first.
+                await waitForImages([...sheets, ...document.querySelectorAll('#printWatermark, #rakoPrintLogo, #pdfLogoCell img')]);
                 await renderPageContent(pages[originalIndex]);
             });
         } finally {
@@ -2791,7 +2794,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.40');
+            const mod = await import('./connections.js?v=1.41');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
