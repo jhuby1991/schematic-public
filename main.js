@@ -2,12 +2,12 @@
 // All JavaScript logic from custom.html, excluding dead cloud storage functions and their calls, should be placed here.
 // ... (Insert all relevant JS code from custom.html here) ... 
 
-import { setupUI } from './ui.js?v=1.37';
-import { setupCanvas } from './canvas.js?v=1.37';
-import { setupPalette } from './palette.js?v=1.37';
-import { setupStorage } from './storage.js?v=1.37';
-import { showNotification } from './utils.js?v=1.37';
-import { setupZoomPan } from './zoom.js?v=1.37';
+import { setupUI } from './ui.js?v=1.38';
+import { setupCanvas } from './canvas.js?v=1.38';
+import { setupPalette } from './palette.js?v=1.38';
+import { setupStorage } from './storage.js?v=1.38';
+import { showNotification } from './utils.js?v=1.38';
+import { setupZoomPan } from './zoom.js?v=1.38';
 
 const app = {
     // Add shared state or methods here if needed

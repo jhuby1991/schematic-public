@@ -1,12 +1,12 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.37';
-import { doAutosave } from './storage.js?v=1.37';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.37';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.37';
-import { showToast, showConfirm } from './utils.js?v=1.37';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.37';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.38';
+import { doAutosave } from './storage.js?v=1.38';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.38';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.38';
+import { showToast, showConfirm } from './utils.js?v=1.38';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.38';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -341,7 +341,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.37').then(mod => {
+                import('./connections.js?v=1.38').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -1311,6 +1311,16 @@ export function setupCanvas(app) {
         ]);
     }
 
+    /* A rotated component turns about its own centre, as it does on screen.
+       The pivot is set inline next to the rotate: the print stylesheet gives
+       every component `transform-origin: top left` (for its print scale), and
+       without an inline pivot a rotated one swung round its top-left corner
+       on paper instead - up to 80px from where it was placed. */
+    function applyRotation(obj, deg) {
+        obj.style.transform = deg ? `rotate(${deg}deg)` : '';
+        obj.style.transformOrigin = deg ? '50% 50%' : '';
+    }
+
     function createCanvasObject(type, imgSrc, x, y, item) {
         type = normalizeType(type);
         if (type === 'TextBox') {
@@ -1587,7 +1597,7 @@ export function setupCanvas(app) {
         if (!excludedTypes.includes(type) || type === 'SensorPIR' || type === 'WKPIR') {
             // Restore rotation if present
             let rotation = (item && typeof item.rotation === 'number') ? item.rotation : 0;
-            obj.style.transform = rotation ? `rotate(${rotation}deg)` : '';
+            applyRotation(obj, rotation);
             const rotateHandle = document.createElement('div');
             rotateHandle.className = 'rotate-handle';
             rotateHandle.title = 'Rotate Clockwise';
@@ -1614,23 +1624,11 @@ export function setupCanvas(app) {
                 e.stopPropagation();
                 e.preventDefault();
                 currentRotation = ((currentRotation + 90) % 360);
-                // For GenericDouble, match GenericSingle: do NOT swap width/height on rotation
-                obj.style.transform = `rotate(${currentRotation}deg)`;
-                const label = wrapper.querySelector('.generic-label-editable');
-                if (label) {
-                    if (type === 'Generic1200') {
-                        label.style.transform = '';
-                        label.style.top = (2 * GRID_SIZE) + 'px';
-                        label.style.width = (size.width * 2) + 'px';
-                        label.style.left = '-' + (size.width / 2) + 'px';
-                    } else {
-                        label.style.transform = `rotate(${-currentRotation}deg)`;
-                        label.style.top = GRID_SIZE + 'px';
-                        label.style.width = size.width + 'px';
-                        label.style.left = '0';
-                    }
-                }
-                wrapper.dataset.rotation = currentRotation;
+                applyRotation(obj, currentRotation);
+                // (This used to go on to adjust a generic's label through a
+                // `wrapper` that doesn't exist for these components. The
+                // ReferenceError stopped it before saveState(), so a rotation
+                // never made it into undo history.)
                 if (typeof saveState === 'function') saveState();
             });
             obj.appendChild(rotateHandle);
@@ -1843,7 +1841,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.37').then(mod => {
+                    import('./connections.js?v=1.38').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -2095,7 +2093,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.37').then(mod => {
+        import('./connections.js?v=1.38').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -2198,7 +2196,7 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.37').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.38').then(mod => mod.clearLineSelection());
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2211,7 +2209,7 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.37').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.38').then(mod => mod.clearLineSelection());
         }
     });
     // ...and the grey surround past the canvas edge, which is most of the
@@ -2249,7 +2247,7 @@ export function setupCanvas(app) {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
             const iconPropertiesPanel = document.getElementById('icon-properties-panel');
             if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.37').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.38').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -2272,9 +2270,9 @@ export function setupCanvas(app) {
                         const imgSrc = canvasItem.querySelector('img') ? canvasItem.querySelector('img').src : null;
                         const x = parseInt(obj.style.left, 10) || 0;
                         const y = parseInt(obj.style.top, 10) || 0;
-                        const rotation = obj.style.transform && obj.style.transform.match(/rotate\(([-\d.]+)deg\)/)
-                            ? parseInt(obj.style.transform.match(/rotate\(([-\d.]+)deg\)/)[1], 10) || 0
-                            : 0;
+                        // A generic's rotation is kept on its wrapper's data attribute
+                        // (the wrapper itself is never transformed), so copy that.
+                        const rotation = parseInt(obj.dataset.rotation, 10) || 0;
                         const labelText = labelDiv ? labelDiv.innerText : '';
                         const labels = labelText ? [labelText] : null;
                         clipboardObject = { type, imgSrc, x, y, labels, rotation };
@@ -2289,7 +2287,9 @@ export function setupCanvas(app) {
                         if ([ 'RAK8', 'DIN4C', 'DIN4T', 'DIN8S', 'DINDLI' ].includes(type) && obj._outputLabels) {
                             labels = [...obj._outputLabels];
                         }
-                        clipboardObject = { type, imgSrc, x, y, labels };
+                        const turned = obj.style.transform && obj.style.transform.match(/rotate\(([-\d.]+)deg\)/);
+                        const rotation = turned ? parseInt(turned[1], 10) || 0 : 0;
+                        clipboardObject = { type, imgSrc, x, y, labels, rotation };
                     } else {
                         clipboardObject = null;
                     }
@@ -2330,7 +2330,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.37').then(mod => {
+            import('./connections.js?v=1.38').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2493,15 +2493,16 @@ export function setupCanvas(app) {
                     }
                 }
                 if (item.termStarState && obj) obj._termStarState = item.termStarState;
-                // Restore rotation for generics and sensors
-                if (typeof item.rotation === 'number' && obj.classList.contains('canvas-item')) {
-                    obj.style.transform = `rotate(${item.rotation}deg)`;
+                // Restore rotation for sensors and labels (a generic's is
+                // restored by createCanvasObject, on the item inside its wrapper)
+                if (typeof item.rotation === 'number' && obj && obj.classList.contains('canvas-item')) {
+                    applyRotation(obj, item.rotation);
                 }
             });
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.37');
+            const mod = await import('./connections.js?v=1.38');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2849,7 +2850,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.37').then(mod => {
+                    import('./connections.js?v=1.38').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2871,7 +2872,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.37').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.38').then(mod => mod.clearLineSelection());
             }
         });
     }
