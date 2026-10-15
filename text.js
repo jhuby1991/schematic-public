@@ -3,6 +3,8 @@
 // multi-line, auto-wrapping label with rich formatting (bold/italic/
 // underline/colour/alignment/lists), rather than a single-line plain input.
 
+import { getVisibleCanvasOrigin } from './zoom.js?v=1.35';
+
 let drawingCanvas, addTextBtn, textBoxPropertiesPanel;
 let fontSizeInput, boldBtn, italicBtn, underlineBtn, colorInput;
 let alignLeftBtn, alignCenterBtn, alignRightBtn, bulletListBtn, numberListBtn;
@@ -107,7 +109,11 @@ export function initTextTool(canvasEl, toolbarEl, propertiesPanelEl, controls, _
 
     if (addTextBtn) {
         addTextBtn.addEventListener('click', () => {
-            const box = createTextBoxOnCanvas(0, 0, '', null, false, { hasBackground: false });
+            // Top-left of whatever part of the drawing is on screen - (0, 0)
+            // as before unless the view has been scrolled or zoomed away
+            // from the corner, where a box at (0, 0) would appear off-screen.
+            const at = getVisibleCanvasOrigin();
+            const box = createTextBoxOnCanvas(at.x, at.y, '', null, false, { hasBackground: false });
             if (typeof window.setSelectedObject === 'function') window.setSelectedObject(box);
             setTimeout(() => focusEditable(itemsOnCanvas.get(box.id)), 0);
         });

@@ -1,11 +1,12 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.34';
-import { doAutosave } from './storage.js?v=1.34';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.34';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.34';
-import { showToast, showConfirm } from './utils.js?v=1.34';
+import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.35';
+import { doAutosave } from './storage.js?v=1.35';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.35';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.35';
+import { showToast, showConfirm } from './utils.js?v=1.35';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.35';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -39,6 +40,8 @@ const DINDLI_DEFAULT_LABEL = 'Up to 64 DALI Ballasts';
 // across all pages, not stored here.
 let pages = [];
 let activePageIndex = 0;
+// Component images still finishing their onload setup (see trackImageSetup).
+const pendingImageSetups = new Set();
 // Per-page undo/redo history, keyed by page id. `undoStack`/`redoStack`
 // above always alias the active page's arrays (see activatePage below).
 let pageHistories = {};
@@ -241,6 +244,9 @@ export function setupCanvas(app) {
         on = !!on;
         if (on === isGridLineDrawing) return;
         isGridLineDrawing = on;
+        // Draw Line and the Hand tool both claim a plain left-drag on the
+        // canvas, so only one can be on at a time (see setPanMode in zoom.js).
+        if (on && typeof app.setPanMode === 'function') app.setPanMode(false, { notify: false });
         if (drawGridLineBtn) {
             drawGridLineBtn.classList.toggle('btn-success', on);
             drawGridLineBtn.classList.toggle('btn-primary', !on);
@@ -335,7 +341,7 @@ export function setupCanvas(app) {
             case 'delete':
             case 'backspace':
                 // Delete selected line if any
-                import('./connections.js?v=1.34').then(mod => {
+                import('./connections.js?v=1.35').then(mod => {
                     mod.deleteSelectedLine();
                 });
                 break;
@@ -751,29 +757,38 @@ export function setupCanvas(app) {
         isBuildingPrintSheets = true;
 
         try {
-            clearPrintSheets();
-            await waitForIconFont(); // before any page's content bounds are measured
-            const sheets = [];
+            // Measured at exactly 100% - the scale the drawing is stored and
+            // printed at - whatever zoom the screen is showing. The bounds
+            // math divides the zoom back out anyway (see getContentBoundsPx),
+            // but measuring unzoomed means the printout cannot depend on the
+            // view at all, not even through sub-pixel rounding of a scaled
+            // layout. The view's zoom and position are put back after.
+            await atPrintScale(async () => {
+                clearPrintSheets();
+                await waitForIconFont(); // before any page's content bounds are measured
+                const sheets = [];
 
-            for (let i = 0; i < pages.length; i++) {
-                await renderPageContent(pages[i]);
-                await new Promise(requestAnimationFrame); // let layout settle before measuring
-                const sheet = buildPrintSheet(pages[i].name, i + 1, pages.length);
-                document.body.appendChild(sheet); // always last in DOM order
-                sheets.push(sheet);
-            }
-            // Only the actual last sheet should skip the trailing page break;
-            // set directly rather than via a :last-child selector, since
-            // sheets are siblings of everything else in body now, not a
-            // wrapper's only children.
-            if (sheets.length) {
-                const last = sheets[sheets.length - 1];
-                last.style.pageBreakAfter = 'auto';
-                last.style.breakAfter = 'auto';
-            }
+                for (let i = 0; i < pages.length; i++) {
+                    await renderPageContent(pages[i]);
+                    await waitForImageSetups(); // circuit and Term/Star labels are added on image load
+                    await new Promise(requestAnimationFrame); // let layout settle before measuring
+                    const sheet = buildPrintSheet(pages[i].name, i + 1, pages.length);
+                    document.body.appendChild(sheet); // always last in DOM order
+                    sheets.push(sheet);
+                }
+                // Only the actual last sheet should skip the trailing page break;
+                // set directly rather than via a :last-child selector, since
+                // sheets are siblings of everything else in body now, not a
+                // wrapper's only children.
+                if (sheets.length) {
+                    const last = sheets[sheets.length - 1];
+                    last.style.pageBreakAfter = 'auto';
+                    last.style.breakAfter = 'auto';
+                }
 
-            await waitForImages(sheets); // let every sheet's component images finish loading first
-            await renderPageContent(pages[originalIndex]);
+                await waitForImages(sheets); // let every sheet's component images finish loading first
+                await renderPageContent(pages[originalIndex]);
+            });
         } finally {
             isBuildingPrintSheets = false;
         }
@@ -805,8 +820,10 @@ export function setupCanvas(app) {
         // is currently on screen (the full multi-page build only runs from
         // the Print Schematic button, since it needs to await page renders).
         clearPrintSheets();
-        const sheet = buildPrintSheet(pages[activePageIndex].name, 1, 1);
-        document.body.appendChild(sheet);
+        atPrintScaleSync(() => {
+            const sheet = buildPrintSheet(pages[activePageIndex].name, 1, 1);
+            document.body.appendChild(sheet);
+        });
     });
     window.addEventListener('afterprint', () => {
         cleanupPrintInfoBlock();
@@ -899,12 +916,24 @@ export function setupCanvas(app) {
             });
         });
 
-        drawingCanvas.addEventListener('dragover', (e) => {
+        // Drops are taken by the scrolling wrapper, not just the canvas: zoomed
+        // out, the canvas covers only part of the view, and a component let
+        // go over the grey surround should still land where it was dropped.
+        // Past the page edge is allowed, as it always has been - print scales
+        // the page down to take it in.
+        const dropZone = document.getElementById('drawing-canvas-wrapper') || drawingCanvas;
+        // Never above or left of the canvas origin, where nothing can be seen.
+        const getDropCoordinates = (e) => {
+            const coords = getCanvasCoordinates(e);
+            return { x: Math.max(0, coords.x), y: Math.max(0, coords.y) };
+        };
+
+        dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
         });
 
-        drawingCanvas.addEventListener('drop', (e) => {
+        dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             const type = e.dataTransfer.getData('text/plain');
             // Icon tiles are rebuilt on every search keystroke (see
@@ -914,14 +943,14 @@ export function setupCanvas(app) {
             if (type === 'Icon') {
                 if (isGridLineDrawing) setDrawMode(false);
                 const iconName = e.dataTransfer.getData('icon-name');
-                const coords = getCanvasCoordinates(e);
+                const coords = getDropCoordinates(e);
                 if (iconName) createIconOnCanvas(iconName, coords.x, coords.y);
                 draggedPaletteItem = null;
                 return;
             }
             if (draggedPaletteItem) {
                 if (isGridLineDrawing) setDrawMode(false); // adding an object reads as "done drawing", not "draw to it"
-                const coords = getCanvasCoordinates(e);
+                const coords = getDropCoordinates(e);
                 const imgSrc = e.dataTransfer.getData('image-src');
                 createCanvasObject(type, imgSrc, coords.x, coords.y);
                 draggedPaletteItem = null;
@@ -1189,6 +1218,32 @@ export function setupCanvas(app) {
         }
     }
 
+    /* Component images finish setting themselves up in their onload handler
+       below - final size, circuit labels, the Term/Star label - which runs
+       some time after createCanvasObject() returns, even for an image that
+       is already cached. Print waits on these (waitForImageSetups) before it
+       measures and clones a page; it used to clone straight away, so pages
+       printed with or without their circuit and Term/Star labels depending
+       on which got there first. */
+    function trackImageSetup(img) {
+        const done = new Promise(resolve => {
+            // Resolved on a timeout, so after every load handler on the
+            // image - including the onload property the caller sets after
+            // this - has run.
+            img.addEventListener('load', () => setTimeout(resolve, 0), { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+        });
+        pendingImageSetups.add(done);
+        done.then(() => pendingImageSetups.delete(done));
+    }
+    function waitForImageSetups(timeoutMs = 4000) {
+        if (pendingImageSetups.size === 0) return Promise.resolve();
+        return Promise.race([
+            Promise.all([...pendingImageSetups]),
+            new Promise(resolve => setTimeout(resolve, timeoutMs)) // never hang printing on one image
+        ]);
+    }
+
     function createCanvasObject(type, imgSrc, x, y, item) {
         type = normalizeType(type);
         if (type === 'TextBox') {
@@ -1410,6 +1465,7 @@ export function setupCanvas(app) {
             img.style.width = '100%';
             img.style.height = '100%';
             obj.appendChild(img);
+            trackImageSetup(img);
             img.onload = function() {
                 const size = getTypeGridSize(type, img);
                 obj.style.width = size.width + 'px';
@@ -1715,7 +1771,7 @@ export function setupCanvas(app) {
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.34').then(mod => {
+                    import('./connections.js?v=1.35').then(mod => {
                         groupLineDragData.forEach(lineData => {
                             // Get new endpoints from SVG
                             const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
@@ -1841,11 +1897,14 @@ export function setupCanvas(app) {
     // Helper to get mouse position relative to drawing-canvas, clamped to canvas bounds
     function getClampedCanvasMousePos(e) {
         const coords = getCanvasCoordinates(e);
-        const rect = drawingCanvas.getBoundingClientRect();
+        // offsetWidth/offsetHeight are the canvas's own size in canvas
+        // units. getBoundingClientRect() is its size on screen, which is
+        // scaled by the zoom, so clamping to it let lines run off the canvas
+        // when zoomed in and stopped them short of the edge when zoomed out.
         let x = coords.x;
         let y = coords.y;
-        x = clamp(x, 0, rect.width);
-        y = clamp(y, 0, rect.height);
+        x = clamp(x, 0, drawingCanvas.offsetWidth);
+        y = clamp(y, 0, drawingCanvas.offsetHeight);
         return { x, y };
     }
 
@@ -1962,7 +2021,7 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.34').then(mod => {
+        import('./connections.js?v=1.35').then(mod => {
             mod.addConnection(conn);
             mod.renderConnections();
             doAutosave(app);
@@ -2065,7 +2124,7 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.34').then(mod => mod.clearLineSelection());
+        import('./connections.js?v=1.35').then(mod => mod.clearLineSelection());
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2078,9 +2137,21 @@ export function setupCanvas(app) {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
             clearSelection();
-            import('./connections.js?v=1.34').then(mod => mod.clearLineSelection());
+            import('./connections.js?v=1.35').then(mod => mod.clearLineSelection());
         }
     });
+    // ...and the grey surround past the canvas edge, which is most of the
+    // view when zoomed out.
+    const canvasWrapperEl = document.getElementById('drawing-canvas-wrapper');
+    if (canvasWrapperEl) {
+        canvasWrapperEl.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || e.target !== canvasWrapperEl) return;
+            // Not when grabbing a scrollbar - scrolling must keep the selection.
+            const r = canvasWrapperEl.getBoundingClientRect();
+            if (e.clientX - r.left >= canvasWrapperEl.clientWidth || e.clientY - r.top >= canvasWrapperEl.clientHeight) return;
+            clearSelection();
+        });
+    }
 
     let clipboardObject = null;
     // Keyboard delete, copy, paste for object or line
@@ -2097,7 +2168,7 @@ export function setupCanvas(app) {
             if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
             const iconPropertiesPanel = document.getElementById('icon-properties-panel');
             if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.34').then(mod => mod.deleteSelectedLine());
+            import('./connections.js?v=1.35').then(mod => mod.deleteSelectedLine());
             doAutosave(app);
             saveState(); // Save after object/line delete
             // Update DPU and circuit displays after object is deleted
@@ -2170,7 +2241,7 @@ export function setupCanvas(app) {
                 selectedObjects.add(obj);
             });
             // Select all lines
-            import('./connections.js?v=1.34').then(mod => {
+            import('./connections.js?v=1.35').then(mod => {
                 for (let i = 0; i < mod.getConnections().length; i++) {
                     mod.selectLine(i);
                 }
@@ -2338,7 +2409,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.34');
+            const mod = await import('./connections.js?v=1.35');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2686,7 +2757,7 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.34').then(mod => {
+                    import('./connections.js?v=1.35').then(mod => {
                         if (selectedLineIndices.length > 0) {
                             mod.selectLine(selectedLineIndices);
                         } else {
@@ -2708,7 +2779,7 @@ export function setupCanvas(app) {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
                 clearSelection();
-                import('./connections.js?v=1.34').then(mod => mod.clearLineSelection());
+                import('./connections.js?v=1.35').then(mod => mod.clearLineSelection());
             }
         });
     }
@@ -2758,12 +2829,20 @@ export function setupCanvas(app) {
     window._renderGrid = renderGrid;
     renderGrid();
 
-    // Utility to get mouse position in canvas coordinates, accounting for zoom and pan
-    const FIXED_ZOOM = 1.3;
+    // Mouse position in canvas coordinates - the units items are positioned,
+    // saved and printed in - whatever the current zoom and scroll position.
+    // The rect already includes scrolling; the scale is read from the
+    // transform actually applied to the canvas (see zoom.js) rather than
+    // from a constant, so the two can never disagree. It used to divide by a
+    // fixed 1.3, left over from when the canvas was always shown at 130%:
+    // once the screen went to 100% in v1.32, every drag covered only 77% of
+    // the distance the cursor moved, and drops, lines and the selection box
+    // all landed short of the pointer.
     function getCanvasCoordinates(e) {
         const rect = drawingCanvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / FIXED_ZOOM;
-        const y = (e.clientY - rect.top) / FIXED_ZOOM;
+        const scale = getCanvasScale();
+        const x = (e.clientX - rect.left) / scale;
+        const y = (e.clientY - rect.top) / scale;
         return { x, y };
     }
 
@@ -2785,9 +2864,10 @@ export function setupCanvas(app) {
         drawingCanvas.addEventListener('mousedown', (e) => {
             if (!isDrawingRect) return;
             if (e.button !== 0) return;
-            const rect = drawingCanvas.getBoundingClientRect();
-            const startX = e.clientX - rect.left;
-            const startY = e.clientY - rect.top;
+            // Canvas units, so a box drawn while zoomed lands under the pointer
+            const start = getCanvasCoordinates(e);
+            const startX = start.x;
+            const startY = start.y;
             rectStart = { x: startX, y: startY };
             currentRectSvg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             currentRectSvg.setAttribute('x', startX);
@@ -2818,9 +2898,9 @@ export function setupCanvas(app) {
 
     function onRectMouseMove(e) {
         if (!rectStart || !currentRectSvg) return;
-        const rect = drawingCanvas.getBoundingClientRect();
-        const currX = e.clientX - rect.left;
-        const currY = e.clientY - rect.top;
+        const curr = getCanvasCoordinates(e);
+        const currX = curr.x;
+        const currY = curr.y;
         const x = Math.min(rectStart.x, currX);
         const y = Math.min(rectStart.y, currY);
         const width = Math.abs(currX - rectStart.x);
@@ -2833,9 +2913,9 @@ export function setupCanvas(app) {
 
     function onRectMouseUp(e) {
         if (!rectStart || !currentRectSvg) return;
-        const rect = drawingCanvas.getBoundingClientRect();
-        const endX = e.clientX - rect.left;
-        const endY = e.clientY - rect.top;
+        const end = getCanvasCoordinates(e);
+        const endX = end.x;
+        const endY = end.y;
         const x = Math.min(rectStart.x, endX);
         const y = Math.min(rectStart.y, endY);
         const width = Math.abs(endX - rectStart.x);

@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.34';
+import { showNotification, showActionBar } from './utils.js?v=1.35';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -18,6 +18,14 @@ const HELP_HTML = `
     <li><b>Move it</b>: drag it. Components snap to the grid so things stay tidy.</li>
     <li><b>Select several</b>: click an empty part of the grid and drag a box around them.</li>
     <li><b>Remove something</b>: select it and press <b>Delete</b> or <b>Backspace</b>.</li>
+  </ul>
+
+  <h3>Zooming and moving around</h3>
+  <ul>
+    <li><b>Zoom</b>: hold <b>Ctrl</b> (<b>Cmd</b> on a Mac) and scroll, or pinch on a trackpad. It zooms in on wherever the pointer is. The magnifier buttons at the top zoom in steps.</li>
+    <li><b>Move around</b>: scroll, or drag with the middle mouse button. Without one, turn on the <b>Hand tool</b> (press <b>H</b>) and drag. Press <b>H</b> or <b>Esc</b> to put it away.</li>
+    <li><b>Fit</b> shows the whole page, plus anything placed off it. Click the percentage to go back to <b>100%</b>, the size it prints at.</li>
+    <li>Zoom only changes your view. The printout is the same whatever zoom you're at.</li>
   </ul>
 
   <h3>Wiring things together</h3>
@@ -49,6 +57,8 @@ const HELP_HTML = `
   <h3>Keyboard shortcuts</h3>
   <ul>
     <li><b>Space</b>: switch between drawing cables and moving components</li>
+    <li><b>+</b> / <b>&minus;</b>: zoom in / out. <b>0</b>: back to 100%. <b>Ctrl + scroll</b>: zoom at the pointer</li>
+    <li><b>H</b>: Hand tool, drag to move around the drawing</li>
     <li><b>Q W A S D R F</b>: change cable colour while drawing</li>
     <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b>: undo / redo</li>
     <li><b>Ctrl+C</b> / <b>Ctrl+V</b>: copy / paste</li>
@@ -142,6 +152,12 @@ const TOUR_STEPS = [
         placement: 'left',
         title: 'The drawing canvas',
         body: 'Drag components here. They snap to the grid automatically, so everything stays aligned.'
+    },
+    {
+        selector: '#zoom-bar',
+        placement: 'bottom',
+        title: 'Zoom and move around',
+        body: 'Zoom in for detail and out for the whole job: use these buttons, or hold <b>Ctrl</b> and scroll. To move around, scroll, drag with the middle mouse button, or turn on the Hand tool (<b>H</b>) and drag. Zoom never changes the printout.'
     },
     {
         selector: '#pageTabsBar',

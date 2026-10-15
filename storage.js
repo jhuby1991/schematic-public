@@ -1,9 +1,9 @@
 // storage.js
 // Handles local save/load logic.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.34';
-import { showToast, showActionBar } from './utils.js?v=1.34';
-import { printWithTip } from './ui.js?v=1.34';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.35';
+import { showToast, showActionBar } from './utils.js?v=1.35';
+import { printWithTip } from './ui.js?v=1.35';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
