@@ -841,7 +841,8 @@
                    now carries its own explicit page-sized box regardless
                    (see getPageBoxPx() in canvas.js), and page-break-after is
                    what paginates them, so body doesn't need to clip. */
-                border: 1px solid black;
+                /* No frame: it only ever drew round the first page. */
+                border: none !important;
                 background: #fff !important;
                 border-radius: 0;
             }
