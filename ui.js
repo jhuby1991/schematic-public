@@ -1,7 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.41';
+import { showNotification, showActionBar } from './utils.js?v=1.42';
+import { hasDrawings } from './drawings.js?v=1.42';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -53,7 +54,7 @@ const HELP_HTML = `
   <h3>Saving and printing</h3>
   <ul>
     <li><b>Save File</b> downloads your drawing as a file you can keep or email. <b>Load File</b> opens it again later.</li>
-    <li>Your work is also kept in this browser automatically, so a refresh or a closed tab won't lose it.</li>
+    <li>Every drawing is also kept in this browser as you work, so a refresh or a closed tab won't lose it. <b>Recent</b> lists them (the last 20), however long ago they were made. The status bar shows when it last autosaved.</li>
     <li><b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to get a PDF.</li>
   </ul>
 
@@ -199,7 +200,7 @@ const TOUR_STEPS = [
         selector: '#toolbarRightGroup',
         placement: 'bottom',
         title: 'Save, undo and print',
-        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
+        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Recent</b> lists every drawing kept automatically in this browser. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
     }
 ];
 
@@ -445,10 +446,8 @@ export function openWelcome(forced = false) {
 function maybeShowWelcome() {
     let welcomeSeen = false;
     try { welcomeSeen = localStorage.getItem(WELCOME_KEY) === '1'; } catch (e) { welcomeSeen = true; }
-    // Don't interrupt someone who is mid-recovery of an autosaved drawing.
-    let hasAutosave = false;
-    try { hasAutosave = !!localStorage.getItem('schematicAutoSave'); } catch (e) {}
-    if (hasAutosave) return;
+    // Don't talk over the offer to pick up an earlier drawing.
+    if (hasDrawings()) return;
 
     if (!welcomeSeen) {
         setTimeout(() => openWelcome(), 400);

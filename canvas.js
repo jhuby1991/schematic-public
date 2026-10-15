@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.41';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.42';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.41';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.41';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.41';
-import { showToast, showConfirm } from './utils.js?v=1.41';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.41';
+import { doAutosave } from './storage.js?v=1.42';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.42';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.42';
+import { showToast, showConfirm } from './utils.js?v=1.42';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.42';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -274,6 +274,13 @@ export function setupCanvas(app) {
     // For the status bar and quick-add: a screen point in canvas units, and
     // adding a component as a drop would (then selecting it).
     app.canvasPointFromClient = (clientX, clientY) => getCanvasCoordinates({ clientX, clientY });
+    // Resolves once a freshly loaded drawing has finished setting itself up
+    // (component images run their setup on load), so storage.js can take its
+    // "as opened" snapshot of the finished drawing rather than a half-built one.
+    app.whenSettled = async () => {
+        await waitForImageSetups();
+        await new Promise(resolve => requestAnimationFrame(() => resolve()));
+    };
     app.addComponent = (type, imgSrc, x, y) => {
         if (isGridLineDrawing) setDrawMode(false);
         const obj = createCanvasObject(type, imgSrc, Math.max(0, x), Math.max(0, y));
@@ -2794,7 +2801,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.41');
+            const mod = await import('./connections.js?v=1.42');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
