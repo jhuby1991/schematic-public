@@ -1,7 +1,7 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.39';
+import { showNotification, showActionBar } from './utils.js?v=1.40';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -14,9 +14,10 @@ const EMPTY_STATE_KEY = 'rakoSchematicEmptyStateSeen';
 const HELP_HTML = `
   <h3>Getting around</h3>
   <ul>
-    <li><b>Add a component</b>: open a group in the left-hand panel, then drag an item onto the grid.</li>
-    <li><b>Move it</b>: drag it. Components snap to the grid so things stay tidy.</li>
-    <li><b>Select several</b>: click an empty part of the grid and drag a box around them.</li>
+    <li><b>Add a component</b>: open a group in the left-hand panel, then drag an item onto the grid. Or press <b>/</b>, type part of its name and press <b>Enter</b> to drop it at the pointer. The search box at the top of the panel finds anything in it.</li>
+    <li><b>Move it</b>: drag it, or nudge it with the arrow keys (hold <b>Shift</b> for bigger steps). Components snap to the grid, and guides appear when an edge or centre lines up with another item or the middle of the page. Hold <b>Alt</b> while dragging to ignore the guides.</li>
+    <li><b>Select several</b>: drag a box around them on an empty part of the grid, or <b>Shift</b>+click each one.</li>
+    <li><b>Copy them</b>: <b>Ctrl+D</b> duplicates what's selected, wires included. <b>Ctrl+C</b> and <b>Ctrl+V</b> copy and paste.</li>
     <li><b>Remove something</b>: select it and press <b>Delete</b> or <b>Backspace</b>.</li>
   </ul>
 
@@ -63,7 +64,10 @@ const HELP_HTML = `
     <li><b>H</b>: Hand tool, drag to move around the drawing</li>
     <li><b>Q W A S D R F</b>: change cable colour while drawing</li>
     <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b>: undo / redo</li>
-    <li><b>Ctrl+C</b> / <b>Ctrl+V</b>: copy / paste</li>
+    <li><b>Ctrl+C</b> / <b>Ctrl+X</b> / <b>Ctrl+V</b>: copy / cut / paste (any number of items and wires)</li>
+    <li><b>Ctrl+D</b>: duplicate what's selected</li>
+    <li><b>Arrow keys</b>: nudge what's selected one grid square (<b>Shift</b>: five)</li>
+    <li><b>/</b>: add a component by name, at the pointer</li>
     <li><b>Delete</b>: remove what's selected</li>
   </ul>
 
@@ -528,7 +532,83 @@ function setupEmptyState() {
  * Setup
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Tooltips
+ * The toolbar's hints, shown quickly in the app's own style instead of the
+ * browser's (which wait about a second and can't be styled). Once one is
+ * showing, moving along the toolbar swaps instantly. Shortcut keys in
+ * brackets at the end of a hint are drawn as keys.
+ * ------------------------------------------------------------------ */
+function setupTooltips() {
+    const SELECTOR = '.toolbar [title], #drawing-toolbar [title], #text-box-properties-panel [title], #icon-properties-panel [title], #pageTabsBar [title]';
+    const tip = document.createElement('div');
+    tip.id = 'appTooltip';
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    let showTimer = null, hideTimer = null, warmUntil = 0, current = null;
+
+    // Move each title to data-tip (keeping it as the accessible name).
+    const adopt = (el) => {
+        const t = el.getAttribute('title');
+        if (!t) return;
+        el.dataset.tip = t;
+        if (!el.getAttribute('aria-label') && !el.textContent.trim()) el.setAttribute('aria-label', t);
+        el.removeAttribute('title');
+    };
+    const adoptAll = () => document.querySelectorAll(SELECTOR).forEach(adopt);
+    adoptAll();
+    // Some titles are added later (page tabs, re-rendered buttons). Only the
+    // chrome is watched - not the canvas, which changes on every drag frame.
+    const observer = new MutationObserver(adoptAll);
+    document.querySelectorAll('.toolbar, #drawing-toolbar, #text-box-properties-panel, #icon-properties-panel, #pageTabsBar')
+        .forEach(el => observer.observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] }));
+
+    const escapeHtml = (str) => str.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    function show(el) {
+        const text = el.dataset.tip;
+        if (!text) return;
+        // "Zoom in (+, or Ctrl + scroll)" -> text + key chips
+        const m = text.match(/^(.*?)\s*\(([^()]{1,24})\)\s*(.*)$/);
+        tip.innerHTML = m
+            ? `${escapeHtml(m[1])} <span class="tip-keys">${escapeHtml(m[2])}</span>${m[3] ? ' ' + escapeHtml(m[3]) : ''}`
+            : escapeHtml(text);
+        tip.classList.add('visible');
+        const r = el.getBoundingClientRect();
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let left = r.left + r.width / 2 - tw / 2;
+        let top = r.bottom + 8;
+        if (top + th > window.innerHeight - 8) top = r.top - th - 8;
+        left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+        tip.style.left = left + 'px';
+        tip.style.top = top + 'px';
+        current = el;
+    }
+    function hide() {
+        clearTimeout(showTimer);
+        tip.classList.remove('visible');
+        if (current) warmUntil = Date.now() + 500;
+        current = null;
+    }
+    document.addEventListener('pointerover', (e) => {
+        const el = e.target.closest && e.target.closest('[data-tip]');
+        if (!el || el === current) return;
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+        if (Date.now() < warmUntil || current) show(el);
+        else showTimer = setTimeout(() => show(el), 350);
+    });
+    document.addEventListener('pointerout', (e) => {
+        const el = e.target.closest && e.target.closest('[data-tip]');
+        if (!el) return;
+        if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+        clearTimeout(showTimer);
+        hideTimer = setTimeout(hide, 60);
+    });
+    ['pointerdown', 'keydown', 'scroll', 'blur'].forEach(t => window.addEventListener(t, hide, true));
+}
+
 export function setupUI(app) {
+    setupTooltips();
     const helpBtn = document.getElementById('helpBtn');
     if (helpBtn) helpBtn.addEventListener('click', openHelp);
 

@@ -86,6 +86,7 @@ export function atPrintScaleSync(fn) {
 
 function saveView() {
     if (!canvas || !wrapper) return null;
+    cancelViewAnimation();
     const saved = { zoom, origin: getOrigin() };
     applyZoom(PRINT_ZOOM);
     return saved;
@@ -266,37 +267,95 @@ function setOrigin(x, y) {
     wrapper.scrollTop = scrollY;
 }
 
-/**
- * Zoom to `newZoom`, keeping the canvas point under (clientX, clientY)
- * where it is on screen. Defaults to the middle of the view.
- */
-function zoomAt(newZoom, clientX, clientY) {
-    if (!canvas || !wrapper) return;
-    newZoom = clampZoom(newZoom);
-    if (Math.abs(newZoom - zoom) < 1e-4) return;
-    const v = wrapper.getBoundingClientRect();
-    const px = (clientX == null ? v.left + wrapper.clientLeft + wrapper.clientWidth / 2 : clientX) - v.left - wrapper.clientLeft;
-    const py = (clientY == null ? v.top + wrapper.clientTop + wrapper.clientHeight / 2 : clientY) - v.top - wrapper.clientTop;
-    const o = getOrigin();
-    const anchorX = (px - o.x) / zoom; // canvas units under the pointer
-    const anchorY = (py - o.y) / zoom;
-    applyZoom(newZoom);
-    setOrigin(px - anchorX * zoom, py - anchorY * zoom);
+/* --- Animated view changes ---
+   The zoom buttons and keys, Fit and 100% glide to the new view over a
+   fifth of a second instead of jumping, so it's easy to see where you've
+   ended up. Ctrl + wheel and pinch stay immediate - they are already
+   continuous - and anything that moves the view by hand (a pan, a wheel
+   zoom) takes over from an animation in flight. Skipped for anyone whose
+   system asks for reduced motion. */
+const VIEW_ANIMATION_MS = 180;
+let viewAnimation = null; // { frame, targetZoom }
+
+function cancelViewAnimation() {
+    if (!viewAnimation) return;
+    cancelAnimationFrame(viewAnimation.frame);
+    viewAnimation = null;
 }
 
-/** Next step up (+1) or down (-1) from the current zoom, around the view's middle. */
+/**
+ * Glide to `targetZoom`. `originAt(z, progress)` gives where the canvas's
+ * corner should be at zoom z, so each caller decides what stays put.
+ */
+function animateView(targetZoom, originAt) {
+    cancelViewAnimation();
+    targetZoom = clampZoom(targetZoom);
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const startZoom = zoom;
+    const step = (progress) => {
+        // Zoom eases geometrically, so 25%->50% feels as quick as 200%->400%.
+        const z = startZoom * Math.pow(targetZoom / startZoom, progress);
+        applyZoom(z);
+        const o = originAt(zoom, progress);
+        setOrigin(o.x, o.y);
+    };
+    if (reduce) { step(1); return; }
+    const start = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const frame = (now) => {
+        const t = Math.min(1, (now - start) / VIEW_ANIMATION_MS);
+        step(ease(t));
+        if (t < 1) viewAnimation.frame = requestAnimationFrame(frame);
+        else viewAnimation = null;
+    };
+    viewAnimation = { frame: requestAnimationFrame(frame), targetZoom };
+}
+
+/** Where (clientX, clientY) is in the view, defaulting to the view's middle. */
+function viewPoint(clientX, clientY) {
+    const v = wrapper.getBoundingClientRect();
+    return {
+        x: (clientX == null ? v.left + wrapper.clientLeft + wrapper.clientWidth / 2 : clientX) - v.left - wrapper.clientLeft,
+        y: (clientY == null ? v.top + wrapper.clientTop + wrapper.clientHeight / 2 : clientY) - v.top - wrapper.clientTop
+    };
+}
+
+/**
+ * Zoom to `newZoom`, keeping the canvas point under (clientX, clientY)
+ * where it is on screen. Defaults to the middle of the view. Immediate,
+ * or with { animate: true } a short glide that holds the same point still.
+ */
+function zoomAt(newZoom, clientX, clientY, { animate = false } = {}) {
+    if (!canvas || !wrapper) return;
+    newZoom = clampZoom(newZoom);
+    if (!animate) cancelViewAnimation();
+    if (Math.abs(newZoom - zoom) < 1e-4) return;
+    const p = viewPoint(clientX, clientY);
+    const o = getOrigin();
+    const anchorX = (p.x - o.x) / zoom; // canvas units under the pointer
+    const anchorY = (p.y - o.y) / zoom;
+    const originAt = (z) => ({ x: p.x - anchorX * z, y: p.y - anchorY * z });
+    if (animate) { animateView(newZoom, originAt); return; }
+    applyZoom(newZoom);
+    const target = originAt(zoom);
+    setOrigin(target.x, target.y);
+}
+
+/** Next step up (+1) or down (-1), around the view's middle. Quick presses
+ *  count from where the last one is heading, not from mid-glide. */
 function stepZoom(direction) {
     const eps = 1e-3;
+    const from = viewAnimation ? viewAnimation.targetZoom : zoom;
     const next = direction > 0
-        ? ZOOM_STEPS.find(s => s > zoom + eps)
-        : [...ZOOM_STEPS].reverse().find(s => s < zoom - eps);
-    if (next != null) zoomAt(next);
+        ? ZOOM_STEPS.find(s => s > from + eps)
+        : [...ZOOM_STEPS].reverse().find(s => s < from - eps);
+    if (next != null) zoomAt(next, null, null, { animate: true });
 }
 
 /** Back to 100% (print size), with the canvas in the top-left corner as on first open. */
 function resetView() {
-    applyZoom(PRINT_ZOOM);
-    setOrigin(0, 0);
+    const o = getOrigin();
+    animateView(PRINT_ZOOM, (z, t) => ({ x: o.x * (1 - t), y: o.y * (1 - t) }));
 }
 
 /**
@@ -333,14 +392,16 @@ function getDrawingExtent() {
 function fitPage() {
     const area = getDrawingExtent();
     if (!area.width || !area.height) return;
-    applyZoom(Math.min(
+    const target = clampZoom(Math.min(
         (wrapper.clientWidth - FIT_PADDING_PX * 2) / area.width,
         (wrapper.clientHeight - FIT_PADDING_PX * 2) / area.height
     ));
-    setOrigin(
-        (wrapper.clientWidth - area.width * zoom) / 2 - area.left * zoom,
-        (wrapper.clientHeight - area.height * zoom) / 2 - area.top * zoom
-    );
+    const from = getOrigin();
+    const to = {
+        x: (wrapper.clientWidth - area.width * target) / 2 - area.left * target,
+        y: (wrapper.clientHeight - area.height * target) / 2 - area.top * target
+    };
+    animateView(target, (z, t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }));
 }
 
 /**
@@ -361,6 +422,7 @@ export function setPanMode(on, { notify = true } = {}) {
     if (notify && window.app && typeof window.app.showNotification === 'function') {
         window.app.showNotification(on ? 'Hand tool: ON  (drag to move around, H or Esc to exit)' : 'Hand tool: OFF');
     }
+    document.dispatchEvent(new CustomEvent('schematic:mode'));
 }
 
 function startPan(e) {
@@ -370,6 +432,7 @@ function startPan(e) {
     if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) {
         document.activeElement.blur();
     }
+    cancelViewAnimation(); // a hand on the view takes over from a glide in flight
     pan = { button: e.button, x: e.clientX, y: e.clientY, origin: getOrigin() };
     wrapper.classList.add('is-panning');
     window.addEventListener('mousemove', onPanMove, true);

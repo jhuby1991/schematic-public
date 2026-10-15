@@ -172,7 +172,9 @@ export function initIconTool(canvasEl, propertiesPanelEl, { sizeInput, colorInpu
 export function createIconOnCanvas(iconName, x, y, existingId = null, skipSave = false, itemProps = {}) {
     // A distinct prefix from text.js's own "item-N" counter, since both
     // modules generate IDs independently and would otherwise collide.
-    const id = existingId || `icon-${itemIdCounter++}`;
+    // Never reuse an id loaded from a file (the counter restarts every session).
+    let id = existingId;
+    while (!id || (!existingId && document.getElementById(id))) id = `icon-${itemIdCounter++}`;
     const size = itemProps.size || DEFAULT_ICON_SIZE;
     const color = itemProps.color || DEFAULT_ICON_COLOR;
 
@@ -197,9 +199,11 @@ export function createIconOnCanvas(iconName, x, y, existingId = null, skipSave =
     iconDiv.appendChild(glyph);
 
     iconDiv.addEventListener('mousedown', (e) => {
-        if (typeof window.setSelectedObject === 'function') {
-            window.setSelectedObject(iconDiv, e.shiftKey);
-        }
+        if (e.button !== 0) return;
+        // Already selected (say, as part of a group): leave the selection be,
+        // so dragging moves the whole group. Shift is handled by the drag code.
+        if (iconDiv.classList.contains('selected') || e.shiftKey) return;
+        if (typeof window.setSelectedObject === 'function') window.setSelectedObject(iconDiv);
     });
 
     drawingCanvas.appendChild(iconDiv);

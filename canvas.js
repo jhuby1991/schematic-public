@@ -1,12 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections } from './connections.js?v=1.39';
-import { doAutosave } from './storage.js?v=1.39';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.39';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.39';
-import { showToast, showConfirm } from './utils.js?v=1.39';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.39';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.40';
+// connections.js is used through these static imports. The handful of
+// dynamic import() calls that used to sit in event handlers resolved a
+// moment later and out of order - a click that cleared the wire selection
+// could land after a selection box had already selected wires.
+import { doAutosave } from './storage.js?v=1.40';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.40';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.40';
+import { showToast, showConfirm } from './utils.js?v=1.40';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.40';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -78,7 +82,6 @@ function collectProjectDetails() {
  * for capturing a page's content before switching away from it.
  */
 function getSerializableCanvasState() {
-    console.debug('[getSerializableCanvasState] called');
     // Collect all objects
     const drawingCanvas = document.getElementById('drawing-canvas');
     const items = [];
@@ -176,7 +179,6 @@ function getSerializableCanvasState() {
         width: parseFloat(r.getAttribute('width')),
         height: parseFloat(r.getAttribute('height'))
     }));
-    console.debug('[getSerializableCanvasState] items:', items);
     return { items, connections, gridLines, rectangles };
 }
 
@@ -250,7 +252,11 @@ export function setupCanvas(app) {
         if (drawGridLineBtn) {
             drawGridLineBtn.classList.toggle('btn-success', on);
             drawGridLineBtn.classList.toggle('btn-primary', !on);
-            drawGridLineBtn.textContent = on ? 'Exit Draw Line  Esc' : 'Draw Line  L';
+            drawGridLineBtn.innerHTML = on
+                ? '<i class="bi bi-pencil-fill"></i><span class="tb-label">Drawing</span><kbd>Esc</kbd>'
+                : '<i class="bi bi-pencil"></i><span class="tb-label">Draw Line</span><kbd>L</kbd>';
+            drawGridLineBtn.classList.toggle('active', on);
+            drawGridLineBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
         }
         // The cursor is the mode indicator; see #drawing-canvas.draw-mode.
         const canvasEl = document.getElementById('drawing-canvas');
@@ -261,13 +267,21 @@ export function setupCanvas(app) {
         if (notify && app.showNotification) {
             app.showNotification(on ? 'Draw Line Mode: ON  (Esc or right-click to exit)' : 'Draw Line Mode: OFF');
         }
+        document.dispatchEvent(new CustomEvent('schematic:mode'));
     }
     function toggleDrawMode() { setDrawMode(!isGridLineDrawing); }
     app.setDrawMode = setDrawMode;
+    // For the status bar and quick-add: a screen point in canvas units, and
+    // adding a component as a drop would (then selecting it).
+    app.canvasPointFromClient = (clientX, clientY) => getCanvasCoordinates({ clientX, clientY });
+    app.addComponent = (type, imgSrc, x, y) => {
+        if (isGridLineDrawing) setDrawMode(false);
+        const obj = createCanvasObject(type, imgSrc, Math.max(0, x), Math.max(0, y));
+        if (obj) setSelectedObject(obj);
+        return obj;
+    };
 
     if (drawGridLineBtn) {
-        drawGridLineBtn.textContent = 'Draw Line  L';
-        drawGridLineBtn.title = 'Draw Line (L). Press Esc or right-click to exit';
         drawGridLineBtn.addEventListener('click', toggleDrawMode);
     }
 
@@ -340,10 +354,7 @@ export function setupCanvas(app) {
                 break;
             case 'delete':
             case 'backspace':
-                // Delete selected line if any
-                import('./connections.js?v=1.39').then(mod => {
-                    mod.deleteSelectedLine();
-                });
+                // Delete selected line if any (deleteSelection covers it too)
                 break;
             case 'f':
                 currentLineType = 'dashed';
@@ -980,6 +991,15 @@ export function setupCanvas(app) {
                     e.dataTransfer.setData('image-src', item.dataset.img);
                 }
                 e.dataTransfer.effectAllowed = 'copy';
+                // Carry the component itself, at the size it will be on the
+                // canvas at this zoom, with its top-left corner on the pointer
+                // - exactly where it lands when dropped. (The browser's own
+                // drag image was the whole palette row, name and all.)
+                const ghost = makeDragGhost(item);
+                if (ghost) {
+                    e.dataTransfer.setDragImage(ghost, 0, 0);
+                    setTimeout(() => ghost.remove(), 0);
+                }
             });
         });
 
@@ -1023,6 +1043,23 @@ export function setupCanvas(app) {
                 draggedPaletteItem = null;
             }
         });
+    }
+
+    function makeDragGhost(item) {
+        const img = item.querySelector('img');
+        if (!img || !img.complete || !img.naturalWidth) return null;
+        const size = getTypeGridSize(normalizeType(item.dataset.type), img);
+        const z = getCanvasScale();
+        const ghost = document.createElement('div');
+        ghost.className = 'drag-ghost';
+        ghost.style.width = (size.width * z) + 'px';
+        ghost.style.height = (size.height * z) + 'px';
+        const copy = document.createElement('img');
+        copy.src = img.src;
+        copy.alt = '';
+        ghost.appendChild(copy);
+        document.body.appendChild(ghost);
+        return ghost;
     }
 
     // --- Grid snapping and type-based sizing ---
@@ -1777,6 +1814,90 @@ export function setupCanvas(app) {
         if (typeof saveState === 'function') saveState();
     }
 
+    /* ------------------------------------------------------------------
+       Alignment guides
+       While a selection is dragged, guides show when its left, centre or
+       right edge (or top, middle, bottom) lines up with another item's, or
+       with the page's edges and centre lines - and within a few screen
+       pixels of one it snaps to it, the way Figma or PowerPoint do. Hold
+       Alt while dragging to place freely on the grid alone.
+       ------------------------------------------------------------------ */
+    const GUIDE_SNAP_SCREEN_PX = 6;
+    let guideEls = [];
+
+    /** Visual box of a top-level object (a generic's is its inner item), in canvas units. */
+    function visualBox(el, canvasRect, z) {
+        const inner = el.classList.contains('generic-wrapper') ? (el.querySelector('.canvas-item') || el) : el;
+        const r = inner.getBoundingClientRect();
+        if (!r.width && !r.height) return null;
+        return { l: (r.left - canvasRect.left) / z, t: (r.top - canvasRect.top) / z, r: (r.right - canvasRect.left) / z, b: (r.bottom - canvasRect.top) / z };
+    }
+
+    /** Everything a dragged selection can line up with: other items' boxes, and the page. */
+    function collectGuideTargets(excluded, canvasRect, z) {
+        const boxes = [];
+        Array.from(drawingCanvas.children).forEach(el => {
+            if (excluded.has(el)) return;
+            if (!(el.classList.contains('canvas-item') || el.classList.contains('generic-wrapper'))) return;
+            const b = visualBox(el, canvasRect, z);
+            if (b) boxes.push(b);
+        });
+        const area = getPrintAreaPx();
+        boxes.push({ l: 0, t: 0, r: area.width, b: area.height, page: true });
+        const xs = [], ys = [];
+        boxes.forEach(b => {
+            xs.push({ v: b.l, box: b }, { v: (b.l + b.r) / 2, box: b }, { v: b.r, box: b });
+            ys.push({ v: b.t, box: b }, { v: (b.t + b.b) / 2, box: b }, { v: b.b, box: b });
+        });
+        return { xs, ys };
+    }
+
+    /** Nearest alignment for the points `gs` (moved by `d`) among `targets`, within `tol`. */
+    function nearestAlignment(gs, d, targets, tol) {
+        let best = null;
+        gs.forEach(g => targets.forEach(c => {
+            const off = c.v - (g + d);
+            if (Math.abs(off) <= tol && (!best || Math.abs(off) < Math.abs(best.off))) best = { off, v: c.v };
+        }));
+        return best;
+    }
+
+    function clearGuides() {
+        guideEls.forEach(el => el.remove());
+        guideEls = [];
+    }
+
+    /** Draw guides for every exact line-up between `box` and the targets. */
+    function showGuides(box, targets, z) {
+        clearGuides();
+        const thin = 1 / z; // one screen pixel at any zoom
+        const draw = (vertical, at, from, to) => {
+            const el = document.createElement('div');
+            el.className = 'align-guide';
+            if (vertical) Object.assign(el.style, { left: (at - thin / 2) + 'px', top: from + 'px', width: thin + 'px', height: (to - from) + 'px' });
+            else Object.assign(el.style, { top: (at - thin / 2) + 'px', left: from + 'px', height: thin + 'px', width: (to - from) + 'px' });
+            drawingCanvas.appendChild(el);
+            guideEls.push(el);
+        };
+        const pad = 8 / z;
+        [[box.l, true], [(box.l + box.r) / 2, true], [box.r, true], [box.t, false], [(box.t + box.b) / 2, false], [box.b, false]].forEach(([v, vertical]) => {
+            const hits = (vertical ? targets.xs : targets.ys).filter(c => Math.abs(c.v - v) < 0.5);
+            if (!hits.length) return;
+            let from = vertical ? box.t : box.l, to = vertical ? box.b : box.r;
+            hits.forEach(h => {
+                from = Math.min(from, vertical ? h.box.t : h.box.l);
+                to = Math.max(to, vertical ? h.box.b : h.box.r);
+            });
+            draw(vertical, v, from - pad, to + pad);
+        });
+    }
+
+    // Alt pressed mid-drag means "ignore guides"; without this, letting go of
+    // it on Windows can hand focus to the browser's own menu.
+    function swallowAltKey(e) {
+        if (e.key === 'Alt') e.preventDefault();
+    }
+
     function makeDraggable(target, isGeneric = false) {
         // Prevent native drag-and-drop UI
         target.addEventListener('dragstart', e => e.preventDefault());
@@ -1784,27 +1905,63 @@ export function setupCanvas(app) {
         let dragRoomLeft = Infinity, dragRoomTop = Infinity; // how far the selection can go left/up
         let groupDragData = null;
         let groupLineDragData = null;
+        let guideTargets = null, groupBox = null, dragZoom = 1;
+        let pendingMove = null, moveFrame = null;
+        // Selected before this press? Recorded in the capture phase, before
+        // text.js/icons.js select the item themselves - Shift+click needs it.
+        let wasSelected = false;
+        target.addEventListener('mousedown', () => { wasSelected = selectedObjects.has(target); }, true);
         // Was draw-line mode armed when this gesture started? A component
         // is always draggable/clickable as normal, draw mode or not - the
         // difference is only that armed mode exits once the gesture resolves
         // into a real drag (moving it) or a plain click (selecting it),
         // since either one reads as "I want this object", not "draw a line".
         let startedWhileArmed = false;
+
+        function beginDrag() {
+            isDragging = true;
+            document.dispatchEvent(new CustomEvent('schematic:drag', { detail: { active: true } }));
+            window.addEventListener('keydown', swallowAltKey, true);
+            window.addEventListener('keyup', swallowAltKey, true);
+            target.style.zIndex = 1000;
+            document.body.style.userSelect = 'none';
+            if (startedWhileArmed) setDrawMode(false);
+            // Measure once per drag; each frame then only compares numbers.
+            const canvasRect = drawingCanvas.getBoundingClientRect();
+            dragZoom = getCanvasScale();
+            const excluded = new Set(groupDragData.map(d => d.obj));
+            guideTargets = collectGuideTargets(excluded, canvasRect, dragZoom);
+            let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+            groupDragData.forEach(d => {
+                const box = visualBox(d.obj, canvasRect, dragZoom);
+                if (!box) return;
+                l = Math.min(l, box.l); t = Math.min(t, box.t); r = Math.max(r, box.r); b = Math.max(b, box.b);
+            });
+            groupBox = Number.isFinite(l) ? { l, t, r, b } : null;
+        }
+
+        // Positions are worked out at most once per frame, however fast the
+        // mouse reports, so a big selection moves without stutter.
         function onMouseMove(e) {
             if (!isDragging) {
                 // Check drag threshold
                 const coords = getCanvasCoordinates(e);
                 const dx = Math.abs(coords.x - dragStartX);
                 const dy = Math.abs(coords.y - dragStartY);
-                if (dx > 3 || dy > 3) {
-                    isDragging = true;
-                    target.style.zIndex = 1000;
-                    document.body.style.userSelect = 'none';
-                    if (startedWhileArmed) setDrawMode(false);
-                } else {
-                    return;
-                }
+                if (dx > 3 || dy > 3) beginDrag();
+                else return;
             }
+            // Alt (or Ctrl/Cmd, since a lone Alt can open the browser's menu
+            // on Windows) places on the grid alone, ignoring guides.
+            pendingMove = { clientX: e.clientX, clientY: e.clientY, free: e.altKey || e.ctrlKey || e.metaKey };
+            if (!moveFrame) moveFrame = requestAnimationFrame(applyMove);
+        }
+
+        function applyMove() {
+            moveFrame = null;
+            const e = pendingMove;
+            if (!e) return;
+            pendingMove = null;
             const coords = getCanvasCoordinates(e);
             // Never past the canvas's left or top edge, where nothing can be
             // seen and anything there drags the whole printed page out of
@@ -1812,16 +1969,25 @@ export function setupCanvas(app) {
             // multi-selection keeps its shape against the edge.
             const deltaX = Math.max(coords.x - dragStartX, -dragRoomLeft);
             const deltaY = Math.max(coords.y - dragStartY, -dragRoomTop);
+            // Alignment: within a few screen pixels of lining up with
+            // something, that axis goes exactly there instead of to the grid.
+            let alignX = null, alignY = null;
+            if (!e.free && groupBox && guideTargets) {
+                const tol = GUIDE_SNAP_SCREEN_PX / dragZoom;
+                alignX = nearestAlignment([groupBox.l, (groupBox.l + groupBox.r) / 2, groupBox.r], deltaX, guideTargets.xs, tol);
+                alignY = nearestAlignment([groupBox.t, (groupBox.t + groupBox.b) / 2, groupBox.b], deltaY, guideTargets.ys, tol);
+                if (alignX && deltaX + alignX.off < -dragRoomLeft) alignX = null;
+                if (alignY && deltaY + alignY.off < -dragRoomTop) alignY = null;
+            }
             // Move all selected objects by the mouse delta
+            let movedX = null, movedY = null;
             groupDragData.forEach(data => {
                 const snapped = snapToGrid(data.startLeft + deltaX, data.startTop + deltaY);
-                if (isGeneric) {
-                    data.obj.style.left = snapped.x + 'px';
-                    data.obj.style.top = snapped.y + 'px';
-                } else {
-                    data.obj.style.left = snapped.x + 'px';
-                    data.obj.style.top = snapped.y + 'px';
-                }
+                const x = alignX ? data.startLeft + deltaX + alignX.off : snapped.x;
+                const y = alignY ? data.startTop + deltaY + alignY.off : snapped.y;
+                data.obj.style.left = x + 'px';
+                data.obj.style.top = y + 'px';
+                if (movedX === null) { movedX = x - data.startLeft; movedY = y - data.startTop; }
             });
             // Move all selected lines by the same delta, snapping to grid
             groupLineDragData.forEach(lineData => {
@@ -1832,30 +1998,37 @@ export function setupCanvas(app) {
                 lineData.line.setAttribute('x2', snapped2.x);
                 lineData.line.setAttribute('y2', snapped2.y);
             });
+            // Guides for whatever now lines up exactly, snapped there or not.
+            if (groupBox && guideTargets && movedX !== null && !e.free) {
+                showGuides({ l: groupBox.l + movedX, r: groupBox.r + movedX, t: groupBox.t + movedY, b: groupBox.b + movedY }, guideTargets, dragZoom);
+            } else {
+                clearGuides();
+            }
         }
+
         function onMouseUp(e) {
+            if (moveFrame) { cancelAnimationFrame(moveFrame); moveFrame = null; applyMove(); }
+            clearGuides();
             if (isDragging) {
                 isDragging = false;
+                document.dispatchEvent(new CustomEvent('schematic:drag', { detail: { active: false } }));
+                window.removeEventListener('keydown', swallowAltKey, true);
+                window.removeEventListener('keyup', swallowAltKey, true);
                 target.style.zIndex = 20;
                 document.body.style.userSelect = '';
                 // Update connection data for moved lines
                 const svgOverlay = document.getElementById('svg-overlay');
                 if (svgOverlay && groupLineDragData && groupLineDragData.length > 0) {
-                    import('./connections.js?v=1.39').then(mod => {
-                        groupLineDragData.forEach(lineData => {
-                            // Get new endpoints from SVG
-                            const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
-                            const y1 = parseInt(lineData.line.getAttribute('y1'), 10);
-                            const x2 = parseInt(lineData.line.getAttribute('x2'), 10);
-                            const y2 = parseInt(lineData.line.getAttribute('y2'), 10);
-                            // Update the real data model by index
-                            mod.updateConnectionLineByIndex(
-                                lineData.index,
-                                x1, y1, x2, y2
-                            );
-                        });
-                        mod.renderConnections();
+                    groupLineDragData.forEach(lineData => {
+                        // Get new endpoints from SVG
+                        const x1 = parseInt(lineData.line.getAttribute('x1'), 10);
+                        const y1 = parseInt(lineData.line.getAttribute('y1'), 10);
+                        const x2 = parseInt(lineData.line.getAttribute('x2'), 10);
+                        const y2 = parseInt(lineData.line.getAttribute('y2'), 10);
+                        // Update the real data model by index
+                        updateConnectionLineByIndex(lineData.index, x1, y1, x2, y2);
                     });
+                    renderConnections();
                 }
                 doAutosave(app);
                 saveState(); // Save after move
@@ -1865,6 +2038,8 @@ export function setupCanvas(app) {
                 setDrawMode(false);
             }
             startedWhileArmed = false;
+            guideTargets = null;
+            groupBox = null;
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         }
@@ -1874,77 +2049,107 @@ export function setupCanvas(app) {
             // see onMouseMove/onMouseUp above for how armed mode exits once
             // the gesture resolves into a move or a click.
             startedWhileArmed = isGridLineDrawing;
-            // Only change selection if you click an unselected object
-            if (!isDragging) {
-                if (!selectedObjects.has(target)) {
-                    selectedObjects.forEach(o => {
-                        o.classList.remove('selected');
-                        // Also remove from .canvas-item child if generic
-                        if (o.classList.contains('canvas-item')) return;
-                        const child = o.querySelector('.canvas-item');
-                        if (child) child.classList.remove('selected');
-                    });
-                    selectedObjects.clear();
-                    selectedObjects.add(target);
-                    target.classList.add('selected');
-                    // Also add to .canvas-item child if generic
-                    if (!target.classList.contains('canvas-item')) {
-                        const child = target.querySelector('.canvas-item');
-                        if (child) child.classList.add('selected');
-                    }
-                    // This path selects any draggable target directly, bypassing
-                    // setSelectedObject - text boxes/icons show their own
-                    // properties panel via their own mousedown handler (which
-                    // runs first and leaves them already selected here, so this
-                    // branch is skipped for them), so a fresh selection of
-                    // anything else needs to clear a stale panel left open.
-                    if (window.selectedItems) window.selectedItems.clear();
-                    const staleTextPanel = document.getElementById('text-box-properties-panel');
-                    if (staleTextPanel) staleTextPanel.style.display = 'none';
-                    const staleIconPanel = document.getElementById('icon-properties-panel');
-                    if (staleIconPanel) staleIconPanel.style.display = 'none';
+            if (e.shiftKey) {
+                // Shift+click adds to the selection, or takes a selected item out of it.
+                if (wasSelected) {
+                    deselectObject(target);
+                    return; // nothing left under the pointer to drag
                 }
-                // If already selected, do not change selection (allow group drag)
+                selectObjectEl(target);
+            } else if (!selectedObjects.has(target)) {
+                // Only change selection if you click an unselected object
+                selectedObjects.forEach(o => {
+                    o.classList.remove('selected');
+                    // Also remove from .canvas-item child if generic
+                    if (o.classList.contains('canvas-item')) return;
+                    const child = o.querySelector('.canvas-item');
+                    if (child) child.classList.remove('selected');
+                });
+                selectedObjects.clear();
+                clearLineSelection();
+                selectObjectEl(target);
+                // This path selects any draggable target directly, bypassing
+                // setSelectedObject - text boxes/icons show their own
+                // properties panel via their own mousedown handler (which
+                // runs first and leaves them already selected here, so this
+                // branch is skipped for them), so a fresh selection of
+                // anything else needs to clear a stale panel left open.
+                if (window.selectedItems) window.selectedItems.clear();
+                const staleTextPanel = document.getElementById('text-box-properties-panel');
+                if (staleTextPanel) staleTextPanel.style.display = 'none';
+                const staleIconPanel = document.getElementById('icon-properties-panel');
+                if (staleIconPanel) staleIconPanel.style.display = 'none';
             }
+            // If already selected, do not change selection (allow group drag)
             const coords = getCanvasCoordinates(e);
             dragStartX = coords.x;
             dragStartY = coords.y;
             // For each selected object, store its original left/top (canvas-relative)
-            groupDragData = Array.from(selectedObjects).map(selObj => {
+            groupDragData = Array.from(selectedObjects).filter(o => o.isConnected).map(selObj => {
                 return {
                     obj: selObj,
-                    startLeft: parseInt(selObj.style.left, 10) || 0,
-                    startTop: parseInt(selObj.style.top, 10) || 0
+                    startLeft: parseFloat(selObj.style.left) || 0,
+                    startTop: parseFloat(selObj.style.top) || 0
                 };
             });
             // For each selected line, store its original endpoints and index
             const svgOverlay = document.getElementById('svg-overlay');
             groupLineDragData = [];
             if (svgOverlay) {
-                // Get selected line indices synchronously
                 const lines = svgOverlay.querySelectorAll('line');
-                if (window.connections && window.connections.getSelectedLineIndices) {
-                    const selectedIndices = window.connections.getSelectedLineIndices();
-                    selectedIndices.forEach(idx => {
-                        const line = lines[idx];
-                        if (line) {
-                            groupLineDragData.push({
-                                line,
-                                x1: parseInt(line.getAttribute('x1'), 10),
-                                y1: parseInt(line.getAttribute('y1'), 10),
-                                x2: parseInt(line.getAttribute('x2'), 10),
-                                y2: parseInt(line.getAttribute('y2'), 10),
-                                index: idx
-                            });
-                        }
-                    });
-                }
+                getSelectedLineIndices().forEach(idx => {
+                    const line = lines[idx];
+                    if (line) {
+                        groupLineDragData.push({
+                            line,
+                            x1: parseInt(line.getAttribute('x1'), 10),
+                            y1: parseInt(line.getAttribute('y1'), 10),
+                            x2: parseInt(line.getAttribute('x2'), 10),
+                            y2: parseInt(line.getAttribute('y2'), 10),
+                            index: idx
+                        });
+                    }
+                });
             }
             dragRoomLeft = Math.max(0, Math.min(...groupDragData.map(d => d.startLeft), ...groupLineDragData.map(l => Math.min(l.x1, l.x2))));
             dragRoomTop = Math.max(0, Math.min(...groupDragData.map(d => d.startTop), ...groupLineDragData.map(l => Math.min(l.y1, l.y2))));
             isDragging = false;
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
+    /** Mark one top-level object selected (a generic's inner item shows it too). */
+    function selectObjectEl(el) {
+        selectedObjects.add(el);
+        el.classList.add('selected');
+        if (!el.classList.contains('canvas-item')) {
+            const child = el.querySelector('.canvas-item');
+            if (child) child.classList.add('selected');
+        }
+        if (window.selectedItems && el.id && (el.classList.contains('canvas-text-box') || el.classList.contains('canvas-icon'))) window.selectedItems.add(el.id);
+        notifySelectionChanged();
+    }
+
+    function deselectObject(el) {
+        selectedObjects.delete(el);
+        el.classList.remove('selected');
+        const child = el.querySelector && el.querySelector('.canvas-item');
+        if (child) child.classList.remove('selected');
+        if (window.selectedItems && el.id) window.selectedItems.delete(el.id);
+        notifySelectionChanged();
+    }
+
+    // The status bar listens for this; batched to one update per frame.
+    // Clicking a wire changes the selection inside connections.js, which
+    // says so with its own event.
+    document.addEventListener('schematic:lineselection', () => notifySelectionChanged());
+    let selectionNotice = null;
+    function notifySelectionChanged() {
+        if (selectionNotice) return;
+        selectionNotice = requestAnimationFrame(() => {
+            selectionNotice = null;
+            document.dispatchEvent(new CustomEvent('schematic:selection', { detail: { count: selectedObjects.size + getSelectedLineIndices().length } }));
         });
     }
 
@@ -2052,20 +2257,16 @@ export function setupCanvas(app) {
     // Update temp line as mouse moves
     function handleCanvasMouseMove(e) {
         if (!isGridLineDrawing || !isDrawingLine || !tempLine) return;
-        console.log('handleCanvasMouseMove running');
         const pos = getClampedCanvasMousePos(e);
         const snappedEnd = snapToGrid(pos.x, pos.y);
         const orthoEnd = getOrthogonalPoint(lineStart, snappedEnd);
         tempLine.setAttribute('x2', orthoEnd.x);
         tempLine.setAttribute('y2', orthoEnd.y);
-        console.log('tempLine updated:', tempLine);
     }
 
     // Finish drawing the line (window-level)
     function handleWindowMouseUp(e) {
         window.removeEventListener('mouseup', handleWindowMouseUp);
-        // Debug log
-        console.log('handleWindowMouseUp', { isGridLineDrawing, isDrawingLine, tempLine, lineStart });
         if (!isGridLineDrawing || !isDrawingLine || !tempLine || !lineStart) {
             return;
         }
@@ -2093,12 +2294,10 @@ export function setupCanvas(app) {
             conn.endOffsetY = endObj.offsetY;
         }
         // Save the line via connections.js
-        import('./connections.js?v=1.39').then(mod => {
-            mod.addConnection(conn);
-            mod.renderConnections();
-            doAutosave(app);
-            saveState(); // Save after line is drawn
-        });
+        addConnection(conn);
+        renderConnections();
+        doAutosave(app);
+        saveState(); // Save after line is drawn
         // Remove temp line if it's still a child
         if (tempLine && tempLine.parentNode === svgOverlay) {
             svgOverlay.removeChild(tempLine);
@@ -2133,6 +2332,7 @@ export function setupCanvas(app) {
         if (!obj) return;
         obj.classList.add('selected');
         selectedObjects.add(obj);
+        notifySelectionChanged();
         // text.js/icons.js look up the selected item's own data (font size,
         // colour, etc) by id through this Set - it was never actually
         // populated anywhere before, so their properties panels could show
@@ -2196,7 +2396,11 @@ export function setupCanvas(app) {
         });
         selectedObjects.clear();
         if (window.selectedItems) window.selectedItems.clear();
-        import('./connections.js?v=1.39').then(mod => mod.clearLineSelection());
+        // Synchronously: this used to be an async import, so a selection made
+        // straight after clearing (paste, duplicate) had its lines wiped a
+        // moment later.
+        clearLineSelection();
+        notifySelectionChanged();
         // Hide text box/icon properties panels when nothing is selected
         const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
         if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
@@ -2208,8 +2412,7 @@ export function setupCanvas(app) {
     drawingCanvas.addEventListener('mousedown', (e) => {
         // Only clear selection if clicking the actual canvas background, not the SVG overlay or a line
         if (e.target === drawingCanvas) {
-            clearSelection();
-            import('./connections.js?v=1.39').then(mod => mod.clearLineSelection());
+            clearSelection(); // wires too
         }
     });
     // ...and the grey surround past the canvas edge, which is most of the
@@ -2225,8 +2428,155 @@ export function setupCanvas(app) {
         });
     }
 
-    let clipboardObject = null;
-    // Keyboard delete, copy, paste for object or line
+    /* ------------------------------------------------------------------
+       Copy, cut, paste, duplicate and nudge
+       Work on the whole selection - any mix of components, labels, text
+       boxes, icons and wires - where copy/paste used to take one component
+       and nothing else. Each is one step in undo history.
+       ------------------------------------------------------------------ */
+    let clipboard = null;   // { items, lines }
+    let pasteCount = 0;     // each paste of the same copy lands one step further on
+    let suppressHistory = 0; // >0 while a multi-item change builds up (see saveState)
+    const COPY_OFFSET = 2 * GRID_SIZE;
+
+    const rotationOf = (el) => {
+        const m = el.style.transform && el.style.transform.match(/rotate\(([-\d.]+)deg\)/);
+        return m ? parseInt(m[1], 10) || 0 : 0;
+    };
+
+    /** One top-level object, described the way it is saved to file. */
+    function describeObject(el) {
+        const x = parseFloat(el.style.left) || 0;
+        const y = parseFloat(el.style.top) || 0;
+        if (el.classList.contains('canvas-text-box')) {
+            const editable = el.querySelector('.text-editable');
+            return {
+                type: 'TextBox', x, y,
+                width: parseInt(el.style.width, 10) || 200,
+                html: editable ? editable.innerHTML : '',
+                text: editable ? editable.innerText : '',
+                fontSize: editable ? parseInt(editable.style.fontSize, 10) || 12 : 12,
+                hasBackground: el.style.backgroundColor !== 'transparent'
+            };
+        }
+        if (el.classList.contains('canvas-icon')) {
+            const glyph = el.querySelector('.material-symbols-outlined');
+            return {
+                type: 'Icon', x, y, iconName: el.dataset.iconName,
+                size: glyph ? parseInt(glyph.style.fontSize, 10) || 28 : 28,
+                color: glyph ? glyph.style.color : '#1A1A1A'
+            };
+        }
+        if (el.classList.contains('generic-wrapper')) {
+            const item = el.querySelector('.canvas-item');
+            if (!item) return null;
+            const img = item.querySelector('img');
+            const labelDiv = el.querySelector('.generic-label-editable');
+            const labelText = labelDiv ? labelDiv.innerText : '';
+            return {
+                type: normalizeType(img ? img.alt : item.textContent), imgSrc: img ? img.src : null, x, y,
+                labels: labelText ? [labelText] : null,
+                // A generic's rotation is kept on its wrapper (which is never
+                // itself transformed) - copying it from the transform lost it.
+                rotation: parseInt(el.dataset.rotation, 10) || 0
+            };
+        }
+        if (el.classList.contains('canvas-item')) {
+            const img = el.querySelector('img');
+            const type = normalizeType(img ? img.alt : el.textContent);
+            return {
+                type, imgSrc: img ? img.src : null, x, y,
+                labels: ['RAK8', 'DIN4C', 'DIN4T', 'DIN8S', 'DINDLI'].includes(type) && el._outputLabels ? [...el._outputLabels] : null,
+                termStarState: el._termStarState || null,
+                rotation: rotationOf(el)
+            };
+        }
+        return null;
+    }
+
+    function snapshotSelection() {
+        const items = Array.from(selectedObjects).filter(o => o.isConnected).map(describeObject).filter(Boolean);
+        const all = getConnections();
+        const lines = getSelectedLineIndices().map(i => all[i]).filter(Boolean).map(c => ({ ...c }));
+        return (items.length || lines.length) ? { items, lines } : null;
+    }
+
+    /** Place copies of a snapshot `offset` px down and right, and select them. */
+    function placeCopies(snapshot, offset) {
+        if (!snapshot) return;
+        const created = [];
+        suppressHistory++;
+        try {
+            snapshot.items.forEach(item => {
+                const x = item.x + offset, y = item.y + offset;
+                let el = null;
+                if (item.type === 'TextBox') el = createTextBoxOnCanvas(x, y, item.text, null, true, item);
+                else if (item.type === 'Icon') el = createIconOnCanvas(item.iconName, x, y, null, true, item);
+                else el = createCanvasObject(item.type, item.imgSrc, x, y, item);
+                if (el) created.push(el);
+            });
+            const firstLine = getConnections().length;
+            snapshot.lines.forEach(c => addConnection({ ...c, x1: c.x1 + offset, y1: c.y1 + offset, x2: c.x2 + offset, y2: c.y2 + offset }));
+            clearSelection();
+            created.forEach(selectObjectEl);
+            if (snapshot.lines.length) selectLine(snapshot.lines.map((_, i) => firstLine + i));
+            else renderConnections();
+        } finally {
+            suppressHistory--;
+        }
+        saveState();
+        setTimeout(() => { updateDPUDisplay(); updateCircuitDisplay(); }, 100);
+    }
+
+    function deleteSelection() {
+        selectedObjects.forEach(obj => {
+            if (window.itemsOnCanvas) window.itemsOnCanvas.delete(obj.id);
+            obj.remove();
+        });
+        selectedObjects.clear();
+        if (window.selectedItems) window.selectedItems.clear();
+        const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
+        if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
+        const iconPropertiesPanel = document.getElementById('icon-properties-panel');
+        if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
+        deleteSelectedLine();
+        notifySelectionChanged();
+        doAutosave(app);
+        saveState(); // Save after object/line delete
+        // Update DPU and circuit displays after object is deleted
+        setTimeout(() => {
+            updateDPUDisplay();
+            updateCircuitDisplay();
+        }, 100);
+    }
+
+    /** Move the selection by (dx, dy) canvas px, never past the left or top edge. */
+    let nudgeSaveTimer = null;
+    function nudgeSelection(dx, dy) {
+        const objs = Array.from(selectedObjects).filter(o => o.isConnected);
+        const lineIdx = getSelectedLineIndices();
+        const conns = getConnections();
+        if (!objs.length && !lineIdx.length) return false;
+        const minX = Math.min(...objs.map(o => parseFloat(o.style.left) || 0), ...lineIdx.map(i => Math.min(conns[i].x1, conns[i].x2)));
+        const minY = Math.min(...objs.map(o => parseFloat(o.style.top) || 0), ...lineIdx.map(i => Math.min(conns[i].y1, conns[i].y2)));
+        dx = Math.max(dx, -Math.max(0, minX));
+        dy = Math.max(dy, -Math.max(0, minY));
+        if (!dx && !dy) return true;
+        objs.forEach(o => {
+            o.style.left = ((parseFloat(o.style.left) || 0) + dx) + 'px';
+            o.style.top = ((parseFloat(o.style.top) || 0) + dy) + 'px';
+        });
+        lineIdx.forEach(i => {
+            const c = conns[i];
+            updateConnectionLineByIndex(i, c.x1 + dx, c.y1 + dy, c.x2 + dx, c.y2 + dy);
+        });
+        if (lineIdx.length) renderConnections();
+        // Holding an arrow key repeats: one undo step for the whole move.
+        clearTimeout(nudgeSaveTimer);
+        nudgeSaveTimer = setTimeout(saveState, 350);
+        return true;
+    }
+
     document.addEventListener('keydown', (e) => {
         // Not while typing: in a label, Backspace deletes a letter, Ctrl+A
         // selects the text, Ctrl+V pastes text. Without this, typing in a
@@ -2234,122 +2584,62 @@ export function setupCanvas(app) {
         // selected every object instead of the label's text, and Ctrl+V
         // dropped a copied component on the canvas.
         const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
-        // Delete
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable)) return;
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key.toLowerCase();
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            selectedObjects.forEach(obj => {
-                if (window.itemsOnCanvas) window.itemsOnCanvas.delete(obj.id);
-                obj.remove();
-            });
-            selectedObjects.clear();
-            if (window.selectedItems) window.selectedItems.clear();
-            const textBoxPropertiesPanel = document.getElementById('text-box-properties-panel');
-            if (textBoxPropertiesPanel) textBoxPropertiesPanel.style.display = 'none';
-            const iconPropertiesPanel = document.getElementById('icon-properties-panel');
-            if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
-            import('./connections.js?v=1.39').then(mod => mod.deleteSelectedLine());
-            doAutosave(app);
-            saveState(); // Save after object/line delete
-            // Update DPU and circuit displays after object is deleted
-            setTimeout(() => {
-                updateDPUDisplay();
-                updateCircuitDisplay();
-            }, 100);
-        }
-        // Copy (Ctrl/Cmd + C)
-        else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-            try {
-                const selectedArray = Array.from(selectedObjects);
-                if (selectedArray.length === 1) {
-                    let obj = selectedArray[0];
-                    // Handle generic wrapper
-                    if (obj.classList.contains('generic-wrapper')) {
-                        const canvasItem = obj.querySelector('.canvas-item');
-                        const labelDiv = obj.querySelector('.generic-label-editable');
-                        const type = canvasItem.querySelector('img') ? canvasItem.querySelector('img').alt : canvasItem.textContent;
-                        const imgSrc = canvasItem.querySelector('img') ? canvasItem.querySelector('img').src : null;
-                        const x = parseInt(obj.style.left, 10) || 0;
-                        const y = parseInt(obj.style.top, 10) || 0;
-                        // A generic's rotation is kept on its wrapper's data attribute
-                        // (the wrapper itself is never transformed), so copy that.
-                        const rotation = parseInt(obj.dataset.rotation, 10) || 0;
-                        const labelText = labelDiv ? labelDiv.innerText : '';
-                        const labels = labelText ? [labelText] : null;
-                        clipboardObject = { type, imgSrc, x, y, labels, rotation };
-                    }
-                    // Handle normal canvas-item
-                    else if (obj.classList.contains('canvas-item')) {
-                        const type = obj.querySelector('img') ? obj.querySelector('img').alt : obj.textContent;
-                        const imgSrc = obj.querySelector('img') ? obj.querySelector('img').src : null;
-                        const x = parseInt(obj.style.left, 10) || 0;
-                        const y = parseInt(obj.style.top, 10) || 0;
-                        let labels = null;
-                        if ([ 'RAK8', 'DIN4C', 'DIN4T', 'DIN8S', 'DINDLI' ].includes(type) && obj._outputLabels) {
-                            labels = [...obj._outputLabels];
-                        }
-                        const turned = obj.style.transform && obj.style.transform.match(/rotate\(([-\d.]+)deg\)/);
-                        const rotation = turned ? parseInt(turned[1], 10) || 0 : 0;
-                        clipboardObject = { type, imgSrc, x, y, labels, rotation };
-                    } else {
-                        clipboardObject = null;
-                    }
-                }
-                else {
-                    clipboardObject = null;
-                }
-            } catch (err) {
-                clipboardObject = null;
-            }
-        }
-        // Paste (Ctrl/Cmd + V)
-        else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-            if (clipboardObject && clipboardObject.type) {
-                // Offset pasted object by 20px
-                const offset = 20;
-                const newX = clipboardObject.x + offset;
-                const newY = clipboardObject.y + offset;
-                const newObj = createCanvasObject(clipboardObject.type, clipboardObject.imgSrc, newX, newY, clipboardObject);
-                setSelectedObject(newObj);
-                doAutosave(app);
-            }
-        }
-        // Select All (Ctrl+A or Cmd+A)
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            deleteSelection();
+        } else if (e.key.startsWith('Arrow') && !mod && !e.altKey) {
+            // Arrow keys: one grid square; with Shift, five.
+            const step = GRID_SIZE * (e.shiftKey ? 5 : 1);
+            const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+            if (d && nudgeSelection(d[0], d[1])) e.preventDefault();
+        } else if (mod && (key === 'c' || key === 'x')) {
+            const snap = snapshotSelection();
+            if (!snap) return;
+            clipboard = snap;
+            pasteCount = 0;
+            if (key === 'x') { e.preventDefault(); deleteSelection(); }
+        } else if (mod && key === 'v') {
+            if (!clipboard) return;
+            e.preventDefault();
+            pasteCount += 1;
+            placeCopies(clipboard, COPY_OFFSET * pasteCount);
+        } else if (mod && key === 'd') {
+            // Duplicate (and stop the browser bookmarking the page)
+            const snap = snapshotSelection();
+            if (!snap) return;
+            e.preventDefault();
+            placeCopies(snap, COPY_OFFSET);
+        } else if (mod && key === 'a') {
             e.preventDefault();
             // Select all objects - the top-level ones, so a generic is
             // selected by its wrapper (as clicking it does), and Delete
             // removes the whole thing rather than leaving its label behind.
             Array.from(drawingCanvas.children).forEach(obj => {
-                if (obj.classList.contains('generic-wrapper')) {
-                    const inner = obj.querySelector('.canvas-item');
-                    if (inner) inner.classList.add('selected');
-                } else if (!obj.classList.contains('canvas-item')) {
-                    return;
-                }
-                obj.classList.add('selected');
-                selectedObjects.add(obj);
+                if (obj.classList.contains('generic-wrapper') || obj.classList.contains('canvas-item')) selectObjectEl(obj);
             });
-            // Select all lines
-            import('./connections.js?v=1.39').then(mod => {
-                for (let i = 0; i < mod.getConnections().length; i++) {
-                    mod.selectLine(i);
-                }
-            });
-            return;
+            // Select all lines - at once (one at a time left only the last one selected)
+            const count = getConnections().length;
+            if (count) selectLine(Array.from({ length: count }, (_, i) => i));
+            notifySelectionChanged();
         }
     });
 
     // Add .selected style
     const style = document.createElement('style');
+    // Selection: a crisp ring set just off the item with a soft halo;
+    // hover: a quieter ring. Colours are tokens in custom.html (--sel*).
     style.textContent = `
-        .canvas-item.selected { outline: 2px solid #ff6600 !important; z-index: 2000 !important; }
-        .canvas-item:hover:not(.selected) { outline: 2px solid #ff6600; z-index: 2000 !important; }
-        svg .selected { filter: drop-shadow(0 0 4px #ff6600); stroke: #ff6600 !important; }
-        svg line:hover { stroke: #ff6600 !important; cursor: pointer; }
+        .canvas-item.selected { outline: 1.5px solid var(--sel) !important; outline-offset: 2px; box-shadow: 0 0 0 5px var(--sel-halo) !important; z-index: 2000 !important; }
+        .canvas-item:hover:not(.selected) { outline: 1px solid var(--sel-hover); outline-offset: 2px; z-index: 2000 !important; }
+        svg .selected { filter: drop-shadow(0 0 3px var(--sel-glow)); stroke: var(--sel) !important; }
+        svg line:hover { stroke: var(--sel) !important; cursor: pointer; }
     `;
     document.head.appendChild(style);
 
     function saveState() {
+        if (suppressHistory > 0) return; // a multi-item change saves once, when it's done
         if (window._restoringFromAutosave) {
             console.debug('[saveState] Skipped due to _restoringFromAutosave');
             return;
@@ -2455,7 +2745,6 @@ export function setupCanvas(app) {
      * which are shared across pages and handled separately.
      */
     async function renderPageContent(pageData) {
-        console.debug('[renderPageContent] called with:', pageData);
         isRestoring = true;
         if (!pageData) { isRestoring = false; return; }
         // Clear all objects. Generic components sit inside a wrapper with
@@ -2502,7 +2791,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.39');
+            const mod = await import('./connections.js?v=1.40');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2758,9 +3047,8 @@ export function setupCanvas(app) {
         marqueeStart = getCanvasCoordinates(e);
         if (!marqueeDiv) {
             marqueeDiv = document.createElement('div');
+            marqueeDiv.className = 'marquee-box'; // styled in custom.html
             marqueeDiv.style.position = 'absolute';
-            marqueeDiv.style.border = '1.5px dashed #007bff';
-            marqueeDiv.style.background = 'rgba(0,123,255,0.08)';
             marqueeDiv.style.pointerEvents = 'none';
             marqueeDiv.style.zIndex = 9999;
             drawingCanvas.appendChild(marqueeDiv);
@@ -2850,15 +3138,11 @@ export function setupCanvas(app) {
                             line.classList.remove('selected');
                         }
                     });
-                    import('./connections.js?v=1.39').then(mod => {
-                        if (selectedLineIndices.length > 0) {
-                            mod.selectLine(selectedLineIndices);
-                        } else {
-                            mod.clearLineSelection();
-                        }
-                    });
+                    if (selectedLineIndices.length > 0) selectLine(selectedLineIndices);
+                    else clearLineSelection();
                 }
                 marqueeDiv.style.display = 'none';
+                notifySelectionChanged();
                 window.removeEventListener('mousemove', onMarqueeMove);
                 window.removeEventListener('mouseup', onMarqueeUp);
             }
@@ -2871,8 +3155,7 @@ export function setupCanvas(app) {
         svgOverlay.addEventListener('mousedown', (e) => {
             // Only clear selection if clicking the SVG background, not a line
             if (e.target === svgOverlay) {
-                clearSelection();
-                import('./connections.js?v=1.39').then(mod => mod.clearLineSelection());
+                clearSelection(); // wires too
             }
         });
     }

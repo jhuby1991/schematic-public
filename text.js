@@ -3,7 +3,7 @@
 // multi-line, auto-wrapping label with rich formatting (bold/italic/
 // underline/colour/alignment/lists), rather than a single-line plain input.
 
-import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.39';
+import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.40';
 
 let drawingCanvas, addTextBtn, textBoxPropertiesPanel;
 let fontSizeInput, boldBtn, italicBtn, underlineBtn, colorInput;
@@ -140,6 +140,7 @@ export function startEditing(box, { clientX = null, clientY = null, word = false
         if (sel && sel.modify) { sel.modify('move', 'backward', 'word'); sel.modify('extend', 'forward', 'word'); }
     }
     updateToolbarState();
+    document.dispatchEvent(new CustomEvent('schematic:mode'));
 }
 
 export function stopEditing() {
@@ -158,6 +159,7 @@ export function stopEditing() {
         if (itemData) syncTextFromDom(itemData);
     }
     updateToolbarState();
+    document.dispatchEvent(new CustomEvent('schematic:mode'));
 }
 
 /** Show which styles apply where the caret is: B / I / U and alignment light up. */
@@ -316,7 +318,11 @@ function syncTextFromDom(itemData) {
 }
 
 export function createTextBoxOnCanvas(x, y, text = "", existingId = null, skipSave = false, itemProps = {}) {
-    const id = existingId || `item-${itemIdCounter++}`;
+    // A fresh id must not clash with one loaded from a file: the counter
+    // restarts at 1 every session, and a clash made two boxes share one
+    // entry in itemsOnCanvas, so formatting one could change the other.
+    let id = existingId;
+    while (!id || (!existingId && document.getElementById(id))) id = `item-${itemIdCounter++}`;
     const textBoxDiv = document.createElement('div');
     textBoxDiv.classList.add('canvas-item', 'canvas-text-box');
     textBoxDiv.id = id;
@@ -429,9 +435,10 @@ export function createTextBoxOnCanvas(x, y, text = "", existingId = null, skipSa
         if (e.button !== 0 || isEditing(textBoxDiv)) return;
         const soleSelection = selectedItems.size === 1 && selectedItems.has(id) && textBoxDiv.classList.contains('selected');
         pressedWhileSelected = soleSelection && !e.shiftKey ? { x: e.clientX, y: e.clientY } : null;
-        // Already part of the selection: leave it alone, so a group drag works.
-        if (textBoxDiv.classList.contains('selected') && !e.shiftKey) return;
-        if (typeof window.setSelectedObject === 'function') window.setSelectedObject(textBoxDiv, e.shiftKey);
+        // Already part of the selection: leave it alone, so a group drag
+        // works. Shift+click is handled by the drag code (makeDraggable).
+        if (textBoxDiv.classList.contains('selected') || e.shiftKey) return;
+        if (typeof window.setSelectedObject === 'function') window.setSelectedObject(textBoxDiv);
     });
     textBoxDiv.addEventListener('mouseup', (e) => {
         const press = pressedWhileSelected;

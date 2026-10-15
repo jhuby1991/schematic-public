@@ -1,22 +1,45 @@
 // storage.js
 // Handles local save/load logic.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.39';
-import { showToast, showActionBar } from './utils.js?v=1.39';
-import { printWithTip } from './ui.js?v=1.39';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.40';
+import { showToast, showActionBar } from './utils.js?v=1.40';
+import { printWithTip } from './ui.js?v=1.40';
 
 export const AUTOSAVE_KEY = 'schematicAutoSave';
 
-export function doAutosave(app) {
+/* Autosave is coalesced: it used to serialise the whole document and write
+   it to storage on every call - every keystroke in a label and every step
+   of some drags - which is enough to make typing and dragging hitch on a
+   big drawing. Now the first call schedules one write a moment later, and
+   any calls in between ride along with it (the write reads the drawing as
+   it is when it runs, so nothing is lost). Leaving or hiding the page
+   writes straight away. */
+const AUTOSAVE_DELAY_MS = 250;
+let autosaveTimer = null;
+
+function writeAutosave() {
+    autosaveTimer = null;
     try {
         const data = getSchematicData();
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
-        // Autosave is now silent; no notification popup
-        // if (app && app.showNotification) app.showNotification('Autosaved');
     } catch (e) {
         // Ignore autosave errors
     }
 }
+
+export function doAutosave(app) {
+    if (autosaveTimer) return;
+    autosaveTimer = setTimeout(writeAutosave, AUTOSAVE_DELAY_MS);
+}
+
+/** Write any pending autosave now. */
+export function flushAutosave() {
+    if (!autosaveTimer) return;
+    clearTimeout(autosaveTimer);
+    writeAutosave();
+}
+window.addEventListener('pagehide', flushAutosave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAutosave(); });
 
 export function setupStorage(app) {
     // --- DOM references ---
