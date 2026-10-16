@@ -9,19 +9,19 @@
 // it was issued. Change the drawing afterwards and the stamp comes off until
 // it's issued again.
 
-import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.44';
-import { contentKey, isBlank, displayName } from './drawings.js?v=1.44';
-import { openDrawingData } from './storage.js?v=1.44';
-import { showToast, showConfirm, showActionBar } from './utils.js?v=1.44';
+import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.45';
+import { contentKey, isBlank, displayName } from './drawings.js?v=1.45';
+import { openDrawingData } from './storage.js?v=1.45';
+import { showToast, showConfirm, showActionBar } from './utils.js?v=1.45';
 import {
     FIREBASE, STAFF_DOMAIN, EMULATOR, newIssueCode, normaliseCode, checkUrl, checkUrlShort,
     quickHash, sha256, createIssued, withdrawIssued, lookupIssued, summariseDrawing
-} from './register.js?v=1.44';
-import qrcode from './qrcode.js?v=1.44';
+} from './register.js?v=1.45';
+import qrcode from './qrcode.js?v=1.45';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SIGNED_IN_HINT = 'rakoStaffSignedIn'; // load sign-in straight away next time, so the button is right from the start
-const TOOL_VERSION = 'v1.44';
+const TOOL_VERSION = 'v1.45';
 
 let fb = null;          // the Firebase Auth module and instance, once loaded
 let loading = null;
@@ -383,8 +383,40 @@ function togglePanel() {
 }
 
 /* ------------------------------------------------------------------
- * Opening a drawing from Rako's register (custom.html?issued=RK-...)
+ * Opening a drawing from Rako's register: by link (custom.html?issued=RK-...)
+ * or by typing its code into Retrieve drawing
  * ------------------------------------------------------------------ */
+
+/**
+ * Fetch an issued drawing. Resolves to { status: 'found', rec, data } |
+ * { status: 'missing' } | { status: 'error' } | { status: 'damaged' }.
+ */
+async function fetchIssued(code) {
+    const found = await lookupIssued(code);
+    if (found.status !== 'found') return { status: found.status };
+    try {
+        const data = JSON.parse(found.record.drawing);
+        if (!data || typeof data !== 'object') return { status: 'damaged' };
+        return { status: 'found', rec: found.record, data };
+    } catch (e) {
+        return { status: 'damaged' };
+    }
+}
+
+/** Open a fetched drawing. Whatever was open stays in Recent drawings; the stamp comes with it unless it was withdrawn. */
+async function openIssued(code, rec, data) {
+    const leaving = await openDrawingData(data);
+    const by = (rec.issuedBy && rec.issuedBy.name) || 'Rako';
+    const when = rec.issuedAt ? formatDate(rec.issuedAt) : '';
+    const kept = leaving ? ` “${leaving}” is in Recent drawings.` : '';
+    if (rec.withdrawn) {
+        setDrawingIssue(null);
+        showActionBar({ message: `${code} was issued by ${by}, but Rako has since withdrawn it, so it has no stamp. Ask Rako for the current drawing.${kept}`, actions: [{ label: 'OK', variant: 'btn-primary' }] });
+    } else {
+        setDrawingIssue({ code, name: by, email: (rec.issuedBy && rec.issuedBy.email) || '', issuedAt: Date.parse(rec.issuedAt) || Date.now(), localHash: quickHash(contentKey(plainData())) });
+        showActionBar({ message: `This is ${code} exactly as ${by} issued it for Rako${when ? ` on ${when}` : ''}.${kept}`, actions: [{ label: 'OK', variant: 'btn-primary' }] });
+    }
+}
 
 async function openFromLink() {
     const params = new URLSearchParams(location.search);
@@ -393,34 +425,117 @@ async function openFromLink() {
     params.delete('issued');
     history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
     if (!code) { showToast("That link doesn't have a valid drawing code", 'error', 5000); return; }
-    const found = await lookupIssued(code);
-    if (found.status === 'missing') {
+    const got = await fetchIssued(code);
+    if (got.status === 'missing') {
         showActionBar({ message: `No Rako drawing has the code ${code}.`, actions: [{ label: 'OK', variant: 'btn-primary' }] });
         return;
     }
-    if (found.status === 'error') {
+    if (got.status === 'error') {
         showToast("Couldn't reach Rako's register to open that drawing. Please try again.", 'error', 6000);
         return;
     }
-    const rec = found.record;
-    let data;
-    try { data = JSON.parse(rec.drawing); } catch (e) { showToast("That drawing couldn't be opened", 'error'); return; }
-    await openDrawingData(data);
-    const by = (rec.issuedBy && rec.issuedBy.name) || 'Rako';
-    const when = rec.issuedAt ? formatDate(rec.issuedAt) : '';
-    if (rec.withdrawn) {
-        setDrawingIssue(null);
-        showActionBar({ message: `${code} was issued by ${by}, but Rako has since withdrawn it.`, actions: [{ label: 'OK', variant: 'btn-primary' }] });
-    } else {
-        setDrawingIssue({ code, name: by, email: (rec.issuedBy && rec.issuedBy.email) || '', issuedAt: Date.parse(rec.issuedAt) || Date.now(), localHash: quickHash(contentKey(plainData())) });
-        showActionBar({ message: `This is ${code} exactly as ${by} issued it for Rako${when ? ` on ${when}` : ''}.`, actions: [{ label: 'OK', variant: 'btn-primary' }] });
+    if (got.status === 'damaged') { showToast("That drawing couldn't be opened", 'error'); return; }
+    await openIssued(code, got.rec, got.data);
+}
+
+/** RK7F3K92QD -> RK-7F3K-92QD as it's typed (the check page does the same). */
+function formatCodeInput(input) {
+    const s = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    const parts = s.startsWith('RK') ? ['RK', s.slice(2, 6), s.slice(6, 10)] : [s.slice(0, 4), s.slice(4, 8)];
+    input.value = parts.filter(Boolean).join('-');
+}
+
+/** The Retrieve drawing window: type the code from a drawing's stamp to open that drawing. */
+export function showRetrieveDialog() {
+    document.getElementById('retrieveDrawing')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'retrieveDrawing';
+    overlay.className = 'rd-overlay';
+    overlay.innerHTML = `
+        <form class="rd-box rt-box" role="dialog" aria-modal="true" aria-labelledby="rtTitle" novalidate>
+            <div class="rd-head">
+                <div>
+                    <h3 id="rtTitle">Retrieve a drawing</h3>
+                    <p>Type the code printed next to the QR code on a drawing Rako has issued, to open that drawing here.</p>
+                </div>
+                <button type="button" class="rd-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="rt-body">
+                <label for="rtCode" class="rt-label">Drawing code</label>
+                <div class="rt-row">
+                    <input id="rtCode" class="form-control rt-input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RK-7F3K-92QD" maxlength="12" aria-describedby="rtMsg">
+                    <button type="submit" class="btn btn-primary rt-open">Open</button>
+                </div>
+                <p id="rtMsg" class="rt-msg" aria-live="polite"></p>
+                <p class="rt-note">Whatever is open now stays in Recent drawings.</p>
+            </div>
+        </form>`;
+    const form = overlay.querySelector('form');
+    const input = overlay.querySelector('#rtCode');
+    const button = overlay.querySelector('.rt-open');
+    const msg = overlay.querySelector('#rtMsg');
+    const previous = document.activeElement;
+    let working = false;
+
+    function close(restoreFocus = true) {
+        overlay.classList.remove('rd-in');
+        document.removeEventListener('keydown', onKey, true);
+        setTimeout(() => overlay.remove(), 160);
+        if (restoreFocus && previous && previous.focus) previous.focus();
     }
+    function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    }
+    function say(text, kind = '') {
+        msg.textContent = text;
+        msg.dataset.kind = kind;
+        input.setAttribute('aria-invalid', kind === 'bad' ? 'true' : 'false');
+    }
+
+    input.addEventListener('input', () => { formatCodeInput(input); if (msg.dataset.kind === 'bad') say(''); });
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (working) return;
+        const code = normaliseCode(input.value);
+        if (!code) {
+            say(input.value.trim() ? "That isn't a drawing code. Codes look like RK-7F3K-92QD: RK, then two groups of four letters and numbers." : 'Type the code from the drawing first.', 'bad');
+            input.focus();
+            return;
+        }
+        input.value = code;
+        working = true;
+        button.disabled = true;
+        button.textContent = 'Opening…';
+        say(`Looking up ${code}…`);
+        const got = await fetchIssued(code);
+        working = false;
+        button.disabled = false;
+        button.textContent = 'Open';
+        if (got.status === 'found') {
+            close(false);
+            await openIssued(code, got.rec, got.data);
+            return;
+        }
+        say(got.status === 'missing' ? `No Rako drawing has the code ${code}. Check it was typed correctly.`
+            : got.status === 'damaged' ? `${code} is in Rako's register, but its drawing couldn't be opened.`
+            : "Couldn't reach Rako's register. Check your connection and try again.", 'bad');
+        input.focus();
+        input.select();
+    });
+    overlay.querySelector('.rd-close').addEventListener('click', () => close());
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('rd-in'));
+    input.focus();
+    return { close };
 }
 
 export function setupSales(app) {
     app.fillIssueStamp = fillIssueStamp;
     document.getElementById('salesBtn')?.addEventListener('click', togglePanel);
     document.getElementById('statusIssue')?.addEventListener('click', openPanel);
+    document.getElementById('retrieveBtn')?.addEventListener('click', showRetrieveDialog);
     ['schematic:issue', 'schematic:content'].forEach(t => document.addEventListener(t, render));
     render();
 

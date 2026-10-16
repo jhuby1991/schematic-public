@@ -1,8 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.44';
-import { hasDrawings } from './drawings.js?v=1.44';
+import { showNotification, showActionBar } from './utils.js?v=1.45';
+import { hasDrawings } from './drawings.js?v=1.45';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -56,6 +56,7 @@ const HELP_HTML = `
     <li><b>Save File</b> downloads your drawing as a file you can keep or email. <b>Load File</b> opens it again later.</li>
     <li>Every drawing is also kept in this browser as you work, so a refresh or a closed tab won't lose it. <b>Recent</b> lists them (the last 20), however long ago they were made. The status bar shows when it last autosaved.</li>
     <li><b>Rako staff:</b> click <b>Sales</b> and sign in with your @rakocontrols.com Google account, then <b>Issue this drawing</b>. The print gets a stamp with your name and a code that anyone can check at create.rkdraw.workers.dev/verify. Change the drawing afterwards and the stamp comes off until you issue it again.</li>
+    <li><b>Retrieve</b> opens a drawing Rako has issued: type the code from its stamp (like RK-7F3K-92QD) and it opens here, exactly as issued. Whatever was open stays in Recent.</li>
     <li><b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to get a PDF.</li>
   </ul>
 
@@ -201,7 +202,7 @@ const TOUR_STEPS = [
         selector: '#toolbarRightGroup',
         placement: 'bottom',
         title: 'Save, undo and print',
-        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Recent</b> lists every drawing kept automatically in this browser. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
+        body: '<b>Save File</b> downloads your drawing so you can keep or email it; <b>Load File</b> opens it again. <b>Recent</b> lists every drawing kept automatically in this browser, and <b>Retrieve</b> opens a drawing Rako has issued from the code on its stamp. <b>Undo</b>/<b>Redo</b> step back and forward through changes. <b>Print Schematic</b> opens your print dialog. Choose <i>Save as PDF</i> to export.'
     }
 ];
 

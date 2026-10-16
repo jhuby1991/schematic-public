@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.44';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.45';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.44';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.44';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.44';
-import { showToast, showConfirm } from './utils.js?v=1.44';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.44';
+import { doAutosave } from './storage.js?v=1.45';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.45';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.45';
+import { showToast, showConfirm } from './utils.js?v=1.45';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.45';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -2839,7 +2839,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.44');
+            const mod = await import('./connections.js?v=1.45');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
