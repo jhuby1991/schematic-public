@@ -1,7 +1,10 @@
 // verify.js
 // The public check page: is this code in Rako's register of issued drawings?
 
-import { normaliseCode, lookupIssued } from './register.js?v=1.43';
+import { normaliseCode, lookupIssued } from './register.js?v=1.44';
+import { redirectIfOldAddress } from './moved.js?v=1.44';
+
+redirectIfOldAddress(); // the old GitHub Pages address: on to the new one
 
 const form = document.getElementById('checkForm');
 const input = document.getElementById('codeInput');

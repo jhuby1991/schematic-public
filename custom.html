@@ -2150,6 +2150,46 @@
         #statusBar .sb-save[data-state="file"] .bi { color: #2E7D32; }
         #statusBar .sb-save[data-state="warn"] { color: #B4530A; font-weight: 600; }
 
+        /* ---- The old address, moving on (moved.js) ---- */
+        #movedScreen {
+            position: fixed;
+            inset: 0;
+            z-index: 100003;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(30, 30, 30, 0.55);
+            font-family: var(--rako-font);
+        }
+        #movedScreen .mv-card {
+            width: min(480px, 100%);
+            padding: 24px 26px;
+            background: #FFFFFF;
+            border-radius: 4px;
+            box-shadow: var(--shadow-pop);
+            color: var(--rako-text);
+        }
+        #movedScreen h2 { margin: 0 0 8px; font-size: 1.2rem; font-weight: 600; }
+        #movedScreen p { margin: 0 0 12px; font-size: 0.9rem; line-height: 1.5; color: var(--rako-text-muted); }
+        #movedScreen p b { color: var(--rako-text); }
+        #movedScreen .mv-list { margin: 0 0 16px; padding-left: 18px; font-size: 0.86rem; }
+        #movedScreen .mv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+        #movedScreen .mv-primary {
+            height: 38px;
+            padding: 0 16px;
+            border: 0;
+            border-radius: 3px;
+            background: #3C3C3C;
+            color: #FFFFFF;
+            font: 600 0.9rem var(--rako-font);
+            cursor: pointer;
+        }
+        #movedScreen .mv-primary:disabled { opacity: 0.6; cursor: default; }
+        #movedScreen .mv-secondary { font-size: 0.86rem; color: #5A5A5A; }
+        #movedScreen .mv-status { margin: 12px 0 0; min-height: 1.2em; color: var(--rako-text); }
+        @media print { #movedScreen { display: none !important; } }
+
         /* ---- Rako staff (sales.js) ---- */
         #salesBtn.signed-in { position: relative; border-color: rgba(255,255,255,0.55); color: #FFFFFF; }
         #salesBtn.signed-in::after {
@@ -2495,7 +2535,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.43</span>
+                <span class="app-version" title="Tool version">v1.44</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2895,6 +2935,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.43"></script>
+    <script type="module" src="main.js?v=1.44"></script>
 </body>
 </html>

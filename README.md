@@ -2,7 +2,11 @@
 
 Public build of the schematic drawing tool, hosted with GitHub Pages.
 
-**Live tool:** https://jhuby1991.github.io/schematic-public/
+**Live tool:** https://create.rkdraw.workers.dev/ (Cloudflare, published from `main`)
+
+The old GitHub Pages address (jhuby1991.github.io/schematic-public) still
+serves the same files, but sends everyone on to the Cloudflare address, first
+offering to bring across any drawings autosaved at the old one (`moved.js`).
 
 ## What this is
 
