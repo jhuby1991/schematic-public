@@ -4,11 +4,18 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "firestore.rules"
     ],
     "rewrites": [
-      { "source": "/404", "destination": "/404.html" }
+      {
+        "source": "/404",
+        "destination": "/404.html"
+      }
     ],
     "errorPage": "/404.html"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
   }
-} 
+}

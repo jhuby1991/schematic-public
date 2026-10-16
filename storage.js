@@ -2,13 +2,13 @@
 // Keeping work safe: autosave into Recent drawings (drawings.js), Save File
 // and Load File, Print, and the status bar's "saved" indicator.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.42';
-import { showToast, showActionBar } from './utils.js?v=1.42';
-import { printWithTip } from './ui.js?v=1.42';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.44';
+import { showToast, showActionBar } from './utils.js?v=1.44';
+import { printWithTip } from './ui.js?v=1.44';
 import {
     META_PREFIX, contentKey, isBlank, displayName, friendlyTime, newDrawingId,
     listDrawings, readDrawing, writeDrawing, findDrawingByContent, migrateLegacy, openRecentDialog
-} from './drawings.js?v=1.42';
+} from './drawings.js?v=1.44';
 
 /* Autosave is coalesced: the first change schedules one write a moment
    later and any changes in between ride along with it (the write reads the
@@ -41,6 +41,7 @@ function writeAutosave() {
     const data = readCurrent();
     if (!data) return;
     const key = contentKey(data);
+    if (key !== storedKey) document.dispatchEvent(new CustomEvent('schematic:content')); // e.g. an issue stamp no longer matching
     // Nothing drawn yet: nothing to keep (and a drawing that's been cleared
     // keeps its last real version rather than being blanked).
     if (isBlank(data) || key === storedKey) { renderSaveStatus(data, key); return; }
@@ -153,6 +154,16 @@ async function openDrawing(data, { id = null, fromFile = false } = {}) {
         doAutosave(); // into Recent drawings straight away
     }
     renderSaveStatus(now, key);
+    document.dispatchEvent(new CustomEvent('schematic:content'));
+}
+
+/** Open a drawing that came from somewhere else (Rako's register): kept as its own entry, like a file. */
+export async function openDrawingData(data) {
+    flushAutosave();
+    const leaving = currentId ? currentName() : null;
+    onNewWorkKept = null;
+    await openDrawing(data, { fromFile: true });
+    return leaving;
 }
 
 function currentName() {

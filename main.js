@@ -2,14 +2,16 @@
 // All JavaScript logic from custom.html, excluding dead cloud storage functions and their calls, should be placed here.
 // ... (Insert all relevant JS code from custom.html here) ... 
 
-import { setupUI } from './ui.js?v=1.42';
-import { setupCanvas } from './canvas.js?v=1.42';
-import { setupPalette } from './palette.js?v=1.42';
-import { setupStorage } from './storage.js?v=1.42';
-import { showNotification } from './utils.js?v=1.42';
-import { setupZoomPan } from './zoom.js?v=1.42';
-import { setupStatusBar } from './statusbar.js?v=1.42';
-import { setupQuickAdd } from './quickadd.js?v=1.42';
+import { setupUI } from './ui.js?v=1.44';
+import { setupCanvas } from './canvas.js?v=1.44';
+import { setupPalette } from './palette.js?v=1.44';
+import { setupStorage, offerAutosaveRecovery } from './storage.js?v=1.44';
+import { showNotification, showToast } from './utils.js?v=1.44';
+import { setupZoomPan } from './zoom.js?v=1.44';
+import { setupStatusBar } from './statusbar.js?v=1.44';
+import { setupQuickAdd } from './quickadd.js?v=1.44';
+import { setupSales } from './sales.js?v=1.44';
+import { handleOldAddress, receiveMovedDrawings } from './moved.js?v=1.44';
 
 const app = {
     // Add shared state or methods here if needed
@@ -19,6 +21,8 @@ const app = {
 window.app = app;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // The old GitHub Pages address: on to the new one (with any drawings saved there).
+    if (handleOldAddress()) return;
     window._restoringFromAutosave = true;
     setupUI(app);
     setupCanvas(app);
@@ -27,5 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setupZoomPan();
     setupStatusBar(app);
     setupQuickAdd(app);
+    setupSales(app);
     window._restoringFromAutosave = false;
+    // Opened by the old address to take its drawings across.
+    receiveMovedDrawings((count) => {
+        if (!count) return;
+        showToast(`Brought ${count === 1 ? 'your drawing' : `${count} drawings`} across from the old address`, 'success', 5000);
+        offerAutosaveRecovery(app);
+    });
 }); 

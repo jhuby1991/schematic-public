@@ -31,9 +31,15 @@ function pagesOf(data) {
    default values, and ids. Otherwise just clicking through the tabs of a
    file you'd opened would count as editing it. */
 const NUMERIC = new Set(['x', 'y', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'fontSize', 'size', 'rotation']);
+// Output labels a component gets when nobody has typed any (canvas.js).
+const DEFAULT_LABELS = [
+    Array.from({ length: 8 }, (_, i) => `Circuit ${i + 1}`), // RAK8, DIN8S
+    Array.from({ length: 4 }, (_, i) => `Circuit ${i + 1}`), // DIN4C, DIN4T
+    ['Up to 64 DALI Ballasts']                                // DINDLI
+].map(a => JSON.stringify(a));
 function isEmptyValue(key, v) {
     if (v === null || v === undefined || v === '') return true;
-    if (Array.isArray(v)) return v.every(x => x === null || x === undefined || x === '');
+    if (Array.isArray(v)) return !v.length || (key === 'labels' && DEFAULT_LABELS.includes(JSON.stringify(v)));
     if (key === 'rotation') return !Number(v);
     if (key === 'termStarState') return v === 'blank';
     return false;
@@ -65,7 +71,8 @@ export function contentKey(data) {
             (p.connections || []).map(canonicalLine),
             (p.gridLines || []).map(g => canonical(g)),
             (p.rectangles || []).map(r => canonical(r))
-        ])
+        ]),
+        data.issue && data.issue.code ? data.issue.code : null // issuing it is a change worth saving
     ]);
 }
 

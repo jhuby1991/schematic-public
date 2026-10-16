@@ -80,6 +80,7 @@ export function showConfirm({
 } = {}) {
     return new Promise(resolve => {
         const overlay = document.createElement('div');
+        overlay.className = 'app-confirm';
         overlay.style.cssText = [
             'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.5)',
             'z-index:100000', 'display:flex', 'align-items:center',
