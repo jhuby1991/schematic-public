@@ -1458,33 +1458,22 @@
           }
         }
 
-        /* Scale rules for new keypads */
-        .canvas-item[data-type="RCM"],
-        .canvas-item[data-type="RK-EOS"],
-        .canvas-item[data-type="RK-MOD"] {
-            width: calc(2 * var(--grid-size)) !important;
-            height: calc(2 * var(--grid-size)) !important;
-            padding: 4px !important;
-            margin: 0 !important;
-        }
-        
+        /* Keypads and wireless inputs (RCM, RK-EOS, RK-MOD included) take their
+           size from canvas.js like every other component: 40 x 40px, the same
+           as a WCM. They used to have their own size here, calc(2 *
+           var(--grid-size)), but --grid-size was never defined, so the rule
+           fell back to the artwork's own size: an RCM came out about 1000px
+           across, an RK-EOS about 500px. */
+
+        /* A solid backing, so the grid and any cables underneath don't show
+           through. The WCM artwork's face plate is only about half opaque. */
+        .canvas-item[data-type="KeypadWCM"] img,
+        .canvas-item[data-type="KeypadEOS"] img,
+        .canvas-item[data-type="KeypadMOD"] img,
         .canvas-item[data-type="RCM"] img,
         .canvas-item[data-type="RK-EOS"] img,
         .canvas-item[data-type="RK-MOD"] img {
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain !important;
-        }
-        
-        @media print {
-            .canvas-item[data-type="RCM"],
-            .canvas-item[data-type="RK-EOS"],
-            .canvas-item[data-type="RK-MOD"] {
-                width: calc(2 * var(--grid-size)) !important;
-                height: calc(2 * var(--grid-size)) !important;
-                padding: 4px !important;
-                margin: 0 !important;
-            }
+            background: #FFFFFF;
         }
         
         /* Permanent labels for connectors */
@@ -1744,6 +1733,30 @@
         .dropdown-item:active, .dropdown-item:focus {
             background-color: #DADADA;
             color: var(--rako-text);
+        }
+
+        /* Custom line colour (canvas.js): a rainbow until one's been picked */
+        .connector-custom-option { display: flex; align-items: center; }
+        .custom-connector-swatch {
+            display: inline-block;
+            flex: 0 0 auto;
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+            border-radius: 3px;
+            background: conic-gradient(#E53935, #FDD835, #43A047, #1E88E5, #8E24AA, #E53935);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+        }
+        .custom-connector-input {
+            position: absolute;
+            left: 0;
+            top: 100%;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            border: 0;
+            opacity: 0;
+            pointer-events: none;
         }
 
         /* ---- Left column ---- */
@@ -2513,7 +2526,7 @@
             </div>
             <span class="tb-sep" aria-hidden="true"></span>
             <div class="btn-group tb-group">
-              <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="connectorColourDropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Connector colour" title="Cable type for new lines (Q W A S D R F)">
+              <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="connectorColourDropdown" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Connector colour" title="Cable type for new lines (Q W A S D R F, or C for a custom colour)">
                 <span id="selectedConnectorColorSwatch" style="display:inline-block;width:14px;height:14px;border-radius:2px;background:black;vertical-align:-2px;margin-right:6px;box-shadow:0 0 0 1px rgba(255,255,255,0.35);"></span><span class="tb-label">Connector Colour</span>
               </button>
               <ul class="dropdown-menu" aria-labelledby="connectorColourDropdown" id="connectorColourDropdownMenu">
@@ -2524,7 +2537,14 @@
                 <li><a class="dropdown-item connector-color-option" href="#" data-color="purple"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:purple;margin-right:8px;"></span>DIN Bus - Purple [D]</a></li>
                 <li><a class="dropdown-item connector-color-option" href="#" data-color="red"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:red;margin-right:8px;"></span>DALI - Red [R]</a></li>
                 <li><a class="dropdown-item connector-color-option" href="#" data-color="dashed"><span style="display:inline-block;width:16px;height:16px;border-radius:3px;border-bottom:2px dashed black;margin-right:8px;"></span>Zone - Dashed [F]</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <!-- Any colour at all (canvas.js). Not in the printed legend:
+                     a custom colour has no fixed meaning to list there. -->
+                <li><a class="dropdown-item connector-custom-option" href="#" id="customConnectorOption" title="Pick any colour for new lines. Custom lines aren't listed in the printed legend"><span id="customConnectorSwatch" class="custom-connector-swatch"></span><span id="customConnectorLabel">Custom colour…</span>&nbsp;[C]</a></li>
               </ul>
+              <!-- The colour picker behind "Custom colour…", kept out of sight;
+                   it sits by the dropdown so the browser opens its picker there. -->
+              <input type="color" id="customConnectorInput" class="custom-connector-input" tabindex="-1" aria-label="Custom line colour">
             </div>
             <span class="tb-sep" aria-hidden="true"></span>
             <!-- Zoom (zoom.js). A viewing aid only: the printout is the same
@@ -2567,7 +2587,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.45</span>
+                <span class="app-version" title="Tool version">v1.46</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2967,6 +2987,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.45"></script>
+    <script type="module" src="main.js?v=1.46"></script>
 </body>
 </html>

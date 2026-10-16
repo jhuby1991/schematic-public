@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.45';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.46';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.45';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.45';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.45';
-import { showToast, showConfirm } from './utils.js?v=1.45';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.45';
+import { doAutosave } from './storage.js?v=1.46';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.46';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.46';
+import { showToast, showConfirm } from './utils.js?v=1.46';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.46';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -73,6 +73,12 @@ function collectProjectDetails() {
         salesperson: salespersonInput ? salespersonInput.value : '',
         quoteReference: quoteReferenceInput ? quoteReferenceInput.value : ''
     };
+}
+
+/** A drawn line's type, as saved: 'dashed' (zone), 'custom' (any colour, see connections.js) or 'colour'. */
+function lineTypeOf(line) {
+    if (line.getAttribute('stroke-dasharray')) return 'dashed';
+    return line.getAttribute('data-line-type') === 'custom' ? 'custom' : 'colour';
 }
 
 /**
@@ -156,13 +162,16 @@ function getSerializableCanvasState() {
     });
     // Collect all lines
     const svgOverlay = document.getElementById('svg-overlay');
-    const connections = Array.from(svgOverlay.querySelectorAll('line')).map(line => ({
+    // Not the line still being drawn: the undo snapshot taken as a line is
+    // finished used to catch it too, so undo then redo brought back a second
+    // copy of the last line (without a custom line's type).
+    const connections = Array.from(svgOverlay.querySelectorAll('line:not(.temp-line)')).map(line => ({
         x1: parseInt(line.getAttribute('x1'), 10),
         y1: parseInt(line.getAttribute('y1'), 10),
         x2: parseInt(line.getAttribute('x2'), 10),
         y2: parseInt(line.getAttribute('y2'), 10),
         color: line.getAttribute('stroke'),
-        type: line.getAttribute('stroke-dasharray') ? 'dashed' : 'colour'
+        type: lineTypeOf(line)
     }));
     // Collect grid lines (if any, e.g., lines with a special class)
     const gridLines = Array.from(svgOverlay.querySelectorAll('line.grid-line')).map(line => ({
@@ -334,6 +343,61 @@ export function setupCanvas(app) {
         });
     });
 
+    // --- Custom colour: a plain line in any colour ---
+    // Saved with the drawing like any other line (its colour, plus type
+    // 'custom'), and left out of the printed legend, which only lists the
+    // cable types that have a fixed meaning.
+    const customOption = document.getElementById('customConnectorOption');
+    const customInput = document.getElementById('customConnectorInput');
+    const customSwatch = document.getElementById('customConnectorSwatch');
+    const customLabel = document.getElementById('customConnectorLabel');
+    const CUSTOM_COLOUR_KEY = 'rakoCustomLineColour'; // the last one picked, for next time
+    const isHexColour = (c) => /^#[0-9a-f]{6}$/i.test(c || '');
+    let customLineColour = null;
+    try {
+        const kept = localStorage.getItem(CUSTOM_COLOUR_KEY);
+        if (isHexColour(kept)) customLineColour = kept.toLowerCase();
+    } catch (e) {}
+
+    function showCustomColour() {
+        if (customSwatch) customSwatch.style.background = customLineColour || '';
+        if (customLabel) customLabel.textContent = customLineColour ? `Custom colour (${customLineColour.toUpperCase()})…` : 'Custom colour…';
+    }
+    function useCustomColour(colour, { notify = true } = {}) {
+        if (!isHexColour(colour)) return;
+        customLineColour = colour.toLowerCase();
+        try { localStorage.setItem(CUSTOM_COLOUR_KEY, customLineColour); } catch (e) {}
+        currentLineType = 'custom';
+        setConnectorColor(customLineColour);
+        showCustomColour();
+        if (notify && app.showNotification) app.showNotification(`Custom colour ${customLineColour.toUpperCase()}`);
+    }
+    function pickCustomColour() {
+        if (!customInput) return;
+        customInput.value = customLineColour || '#e91e63';
+        try {
+            if (typeof customInput.showPicker === 'function') customInput.showPicker();
+            else customInput.click();
+        } catch (err) {
+            customInput.click();
+        }
+    }
+    if (customInput) {
+        // Follows the picker as it moves, then settles when it closes.
+        customInput.addEventListener('input', () => useCustomColour(customInput.value, { notify: false }));
+        customInput.addEventListener('change', () => {
+            useCustomColour(customInput.value);
+            customInput.blur(); // so L, Q, W... work again straight away
+        });
+    }
+    if (customOption) {
+        customOption.addEventListener('click', (e) => {
+            e.preventDefault();
+            pickCustomColour();
+        });
+    }
+    showCustomColour();
+
     // --- Keyboard Shortcuts for Connector Colour ---
     document.addEventListener('keydown', function(e) {
         // Allow spacebar and shortcuts in input fields, textareas, and any
@@ -344,7 +408,16 @@ export function setupCanvas(app) {
         const active = document.activeElement;
         const tag = active && active.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (active && active.isContentEditable)) return;
+        // Ctrl/Cmd shortcuts (copy, select all...) aren't colour changes:
+        // Ctrl+A used to turn the next line blue, and Ctrl+C would open the
+        // custom colour picker.
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
         switch (e.key.toLowerCase()) {
+            case 'c':
+                // The last custom colour; the picker the first time.
+                if (customLineColour) useCustomColour(customLineColour);
+                else pickCustomColour();
+                break;
             case 'q':
                 currentLineType = 'colour';
                 setConnectorColor('black');
@@ -400,10 +473,14 @@ export function setupCanvas(app) {
     function setConnectorColor(color) {
         currentLineColor = color;
         if (selectedConnectorColourSwatch) selectedConnectorColourSwatch.style.background = color;
+        // The ticked entry is the line type in use: a custom colour that
+        // happens to match a preset still isn't that cable type.
+        const ticked = currentLineType === 'dashed' ? 'dashed' : currentLineType === 'custom' ? null : color;
         connectorColourOptions.forEach(opt => {
-            if (opt.getAttribute('data-color') === color) opt.classList.add('active');
-            else opt.classList.remove('active');
+            opt.classList.toggle('active', opt.getAttribute('data-color') === ticked);
         });
+        const customOpt = document.getElementById('customConnectorOption');
+        if (customOpt) customOpt.classList.toggle('active', currentLineType === 'custom');
     }
 
     // --- Orange Print Area (pdf-page-guide) ---
@@ -551,13 +628,16 @@ export function setupCanvas(app) {
     function getUsedConnectorKeys() {
         const used = new Set();
         const addFrom = (conns) => {
-            (conns || []).forEach(c => used.add(c.type === 'dashed' ? 'zone' : (c.color || 'black')));
+            (conns || []).forEach(c => {
+                if (c.type === 'custom') return; // custom colours have no fixed meaning to list
+                used.add(c.type === 'dashed' ? 'zone' : (c.color || 'black'));
+            });
         };
         pages.forEach((p, i) => {
             if (i === activePageIndex) {
-                const liveConns = Array.from(document.getElementById('svg-overlay').querySelectorAll('line')).map(line => ({
+                const liveConns = Array.from(document.getElementById('svg-overlay').querySelectorAll('line:not(.temp-line)')).map(line => ({
                     color: line.getAttribute('stroke'),
-                    type: line.getAttribute('stroke-dasharray') ? 'dashed' : 'colour'
+                    type: lineTypeOf(line)
                 }));
                 addFrom(liveConns);
             } else {
@@ -2839,7 +2919,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.45');
+            const mod = await import('./connections.js?v=1.46');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }

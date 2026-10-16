@@ -112,6 +112,9 @@ export function renderConnections() {
         } else {
             line.removeAttribute('stroke-dasharray');
         }
+        // A custom-colour line: saved back as type 'custom' (canvas.js reads
+        // this), so the printed legend can leave it out.
+        if (conn.type === 'custom') line.setAttribute('data-line-type', 'custom');
         svgOverlay.appendChild(line);
     });
 }

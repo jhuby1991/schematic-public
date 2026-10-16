@@ -1,8 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.45';
-import { hasDrawings } from './drawings.js?v=1.45';
+import { showNotification, showActionBar } from './utils.js?v=1.46';
+import { hasDrawings } from './drawings.js?v=1.46';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -33,7 +33,7 @@ const HELP_HTML = `
   <h3>Wiring things together</h3>
   <ul>
     <li>Click <b>Draw Line</b> (or press <b>Space</b>) to start drawing cables, then click from one component to another.</li>
-    <li>Use <b>Connector Colour</b> to pick the cable type. Each type prints in its own colour with a legend.</li>
+    <li>Use <b>Connector Colour</b> to pick the cable type. Each type prints in its own colour with a legend. <b>Custom colour…</b> at the bottom draws plain lines in any colour; they print in that colour but aren't listed in the legend.</li>
     <li>Press <b>Space</b> again to go back to moving components.</li>
   </ul>
 
@@ -65,7 +65,7 @@ const HELP_HTML = `
     <li><b>Space</b>: switch between drawing cables and moving components</li>
     <li><b>+</b> / <b>&minus;</b>: zoom in / out. <b>0</b>: back to 100%. <b>Ctrl + scroll</b>: zoom at the pointer</li>
     <li><b>H</b>: Hand tool, drag to move around the drawing</li>
-    <li><b>Q W A S D R F</b>: change cable colour while drawing</li>
+    <li><b>Q W A S D R F</b>: change cable colour while drawing. <b>C</b>: your custom colour (the first time, it asks which)</li>
     <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b>: undo / redo</li>
     <li><b>Ctrl+C</b> / <b>Ctrl+X</b> / <b>Ctrl+V</b>: copy / cut / paste (any number of items and wires)</li>
     <li><b>Ctrl+D</b>: duplicate what's selected</li>
@@ -184,7 +184,7 @@ const TOUR_STEPS = [
         selector: '#connectorColourDropdown',
         placement: 'bottom',
         title: 'Cable colour',
-        body: 'Pick a cable type before you draw a line. Each type prints in its own colour, with a legend on the printout.'
+        body: 'Pick a cable type before you draw a line. Each type prints in its own colour, with a legend on the printout. <b>Custom colour…</b> draws plain lines in any colour you like; those aren\'t listed in the legend.'
     },
     {
         selector: '#drawing-toolbar',
