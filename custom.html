@@ -1990,11 +1990,21 @@
             #saveToFileBtn .tb-label,
             #loadFromFileBtn .tb-label,
             #recentBtn .tb-label,
+            #retrieveBtn .tb-label,
             #salesBtn .tb-label { display: none; }
             #selectedConnectorColorSwatch { margin-right: 2px !important; }
             .tb-sep { margin: 0 6px; }
         }
-        @media (max-width: 1010px) {
+        /* Retrieve's label goes a little sooner than the rest, so it doesn't
+           push the toolbar onto two lines on a typical laptop screen. */
+        @media (max-width: 1535px) {
+            #retrieveBtn .tb-label { display: none; }
+        }
+        @media (max-width: 1399px) {
+            #connectorColourDropdown .tb-label { display: none; }
+            #selectedConnectorColorSwatch { margin-right: 2px !important; }
+        }
+        @media (max-width: 1039px) {
             .toolbar .tb-label,
             .toolbar kbd { display: none; }
         }
@@ -2387,6 +2397,27 @@
         .rd-new { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
         @media print { .rd-overlay { display: none !important; } }
 
+        /* ---- Retrieve drawing (sales.js): the same window style ---- */
+        .rt-box { width: min(440px, 100%); }
+        .rt-body { padding: 16px 20px 18px; }
+        .rt-label { display: block; margin-bottom: 6px; font-size: 0.8rem; font-weight: 600; color: var(--rako-text); }
+        .rt-row { display: flex; gap: 8px; }
+        .rt-input {
+            flex: 1 1 auto;
+            min-width: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 1rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .rt-input::placeholder { text-transform: none; letter-spacing: 0.06em; color: #A8A8A8; }
+        .rt-input[aria-invalid="true"] { border-color: #B42318; box-shadow: 0 0 0 0.2rem rgba(180, 35, 24, 0.12); }
+        .rt-open { flex: 0 0 auto; min-width: 84px; }
+        .rt-msg { min-height: 1.2em; margin: 8px 0 0; font-size: 0.8rem; line-height: 1.45; color: var(--rako-text-muted); }
+        .rt-msg:empty { margin: 0; min-height: 0; }
+        .rt-msg[data-kind="bad"] { color: #B42318; }
+        .rt-note { margin: 10px 0 0; font-size: 0.74rem; color: var(--rako-text-muted); }
+
         /* ---- Side panels and palette ---- */
         #text-box-properties-panel, #icon-properties-panel { animation: panelIn var(--t-med) var(--ease); }
         @keyframes panelIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
@@ -2515,6 +2546,7 @@
                 <button id="saveToFileBtn" type="button" class="btn btn-primary btn-sm" aria-label="Save File" title="Download the drawing as a file you can keep or email"><i class="bi bi-download"></i><span class="tb-label">Save File</span></button>
                 <button id="loadFromFileBtn" type="button" class="btn btn-secondary btn-sm" aria-label="Load File" title="Open a saved drawing file"><i class="bi bi-upload"></i><span class="tb-label">Load File</span></button>
                 <button id="recentBtn" type="button" class="btn btn-secondary btn-sm" aria-label="Recent drawings" title="Recent drawings, kept automatically in this browser"><i class="bi bi-clock-history"></i><span class="tb-label">Recent</span></button>
+                <button id="retrieveBtn" type="button" class="btn btn-secondary btn-sm" aria-label="Retrieve drawing" title="Open a drawing Rako has issued by typing the code from its stamp"><i class="bi bi-qr-code"></i><span class="tb-label">Retrieve</span></button>
                 <button id="saveSchematicBtn" class="btn btn-success btn-sm" title="Save Schematic (Local)" style="display: none;"><i class="bi bi-save"></i> Quick Save</button>
                 <button id="loadSchematicBtn" class="btn btn-warning btn-sm" title="Load Schematic (Local)" style="display: none;"><i class="bi bi-folder2-open"></i> Quick Load</button>
             </div>
@@ -2535,7 +2567,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.44</span>
+                <span class="app-version" title="Tool version">v1.45</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2935,6 +2967,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.44"></script>
+    <script type="module" src="main.js?v=1.45"></script>
 </body>
 </html>

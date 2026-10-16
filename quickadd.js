@@ -5,9 +5,9 @@
 // - The search box at the top of the palette filters every group at once;
 //   matching items can be dragged out as usual, and Enter adds the first.
 
-import { createTextBoxOnCanvas, startEditing } from './text.js?v=1.44';
-import { createIconOnCanvas, ICON_CATEGORIES } from './icons.js?v=1.44';
-import { getVisibleCanvasOrigin } from './zoom.js?v=1.44';
+import { createTextBoxOnCanvas, startEditing } from './text.js?v=1.45';
+import { createIconOnCanvas, ICON_CATEGORIES } from './icons.js?v=1.45';
+import { getVisibleCanvasOrigin } from './zoom.js?v=1.45';
 
 const MAX_RESULTS = 40;
 const norm = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');

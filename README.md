@@ -56,7 +56,8 @@ and **Issue this drawing**. That adds the drawing to Rako's register and prints 
 stamp next to the title block: their name, the date, a code like `RK-7F3K-92QD`
 and a QR code. Anyone can check a code at `/verify` (verify.html), which shows the
 drawing exactly as it was issued. Editing a drawing after issuing it takes the
-stamp off until it is issued again.
+stamp off until it is issued again. Anyone can also type a code into
+**Retrieve** in the tool's toolbar to open that drawing in the tool.
 
 - Sign-in and the register use the `rako-system-designer-b7de1` Firebase project
   (Firebase Auth with Google, and Firestore over its REST API) - see `register.js`.

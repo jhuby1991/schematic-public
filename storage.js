@@ -2,13 +2,13 @@
 // Keeping work safe: autosave into Recent drawings (drawings.js), Save File
 // and Load File, Print, and the status bar's "saved" indicator.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.44';
-import { showToast, showActionBar } from './utils.js?v=1.44';
-import { printWithTip } from './ui.js?v=1.44';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.45';
+import { showToast, showActionBar } from './utils.js?v=1.45';
+import { printWithTip } from './ui.js?v=1.45';
 import {
     META_PREFIX, contentKey, isBlank, displayName, friendlyTime, newDrawingId,
     listDrawings, readDrawing, writeDrawing, findDrawingByContent, migrateLegacy, openRecentDialog
-} from './drawings.js?v=1.44';
+} from './drawings.js?v=1.45';
 
 /* Autosave is coalesced: the first change schedules one write a moment
    later and any changes in between ride along with it (the write reads the
