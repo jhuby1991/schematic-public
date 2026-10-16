@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.42';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.43';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.42';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.42';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.42';
-import { showToast, showConfirm } from './utils.js?v=1.42';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.42';
+import { doAutosave } from './storage.js?v=1.43';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.43';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.43';
+import { showToast, showConfirm } from './utils.js?v=1.43';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.43';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -198,13 +198,39 @@ function syncActivePageFromCanvas() {
     pages[activePageIndex] = { ...pages[activePageIndex], ...getSerializableCanvasState() };
 }
 
+// The Rako issue stamp this drawing carries, if a salesperson has issued
+// it (sales.js): { code, name, email, issuedAt, localHash }. Saved with the
+// drawing; whether it still applies - the drawing unchanged since - is
+// worked out from localHash when it's shown or printed.
+let drawingIssue = null;
+// Only a well-formed stamp is kept: a drawing file is just data, and could
+// carry anything in this field.
+function validIssue(issue) {
+    if (!issue || typeof issue !== 'object' || !/^RK-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(issue.code || '')) return null;
+    return {
+        code: issue.code,
+        name: String(issue.name || '').slice(0, 120),
+        email: String(issue.email || '').slice(0, 200),
+        issuedAt: Number(issue.issuedAt) || 0,
+        localHash: String(issue.localHash || '')
+    };
+}
+export function getDrawingIssue() { return drawingIssue ? { ...drawingIssue } : null; }
+export function setDrawingIssue(issue) {
+    drawingIssue = validIssue(issue);
+    document.dispatchEvent(new CustomEvent('schematic:issue'));
+    if (window.app) doAutosave(window.app);
+}
+
 export function getSchematicData() {
     syncActivePageFromCanvas();
-    return {
+    const data = {
         projectDetails: collectProjectDetails(),
         pages: pages.map(p => ({ ...p })),
         activePageIndex
     };
+    if (drawingIssue) data.issue = { ...drawingIssue };
+    return data;
 }
 
 export function setupCanvas(app) {
@@ -498,6 +524,10 @@ export function setupCanvas(app) {
         if(salespersonValPrint) salespersonValPrint.textContent = salespersonInput.value || '';
         const quoteRefValPrint = printInfoBlockContent.querySelector('#printQuoteReferenceVal');
         if(quoteRefValPrint) quoteRefValPrint.textContent = quoteReferenceInput.value || '';
+        // The Rako issue stamp, only while the drawing is exactly as issued (sales.js)
+        if (window.app && typeof window.app.fillIssueStamp === 'function') {
+            window.app.fillIssueStamp(printInfoBlockContent.querySelector('#pdfIssueStamp'));
+        }
         // Show the info block
         printInfoBlockContent.classList.add('print-visible');
     }
@@ -1683,9 +1713,14 @@ export function setupCanvas(app) {
         drawingCanvas.appendChild(obj);
         // Attach double-click to the object (event delegation)
         if ([ 'RAK8', 'DIN4C', 'DIN4T', 'DIN8S', 'DINDLI' ].includes(type)) {
+            // Until the picture loads and sets them up, a new component holds
+            // the same default labels it will end up with. It used to hold
+            // blanks, and anything saved in that moment - the undo starting
+            // point of a freshly opened drawing, in particular - kept them, so
+            // undoing straight after opening wiped a RAK8's "Circuit 1-8".
             if (!obj._outputLabels) {
-                if (type === 'RAK8' || type === 'DIN8S') obj._outputLabels = Array(8).fill('');
-                else if (type === 'DIN4C' || type === 'DIN4T') obj._outputLabels = Array(4).fill('');
+                if (type === 'RAK8' || type === 'DIN8S') obj._outputLabels = Array.from({ length: 8 }, (_, i) => `Circuit ${i + 1}`);
+                else if (type === 'DIN4C' || type === 'DIN4T') obj._outputLabels = Array.from({ length: 4 }, (_, i) => `Circuit ${i + 1}`);
                 else if (type === 'DINDLI') obj._outputLabels = [DINDLI_DEFAULT_LABEL];
             }
             obj.addEventListener('dblclick', (e) => {
@@ -2667,7 +2702,10 @@ export function setupCanvas(app) {
             const currentState = undoStack.pop();
             redoStack.push(currentState);
             const prevState = undoStack[undoStack.length - 1];
-            renderPageContent(prevState);
+            // Autosave what undo brought back: only components with pictures
+            // used to trigger a save as they reloaded, so undoing a text or
+            // cable change could leave the undone version in Recent drawings.
+            renderPageContent(prevState).then(() => doAutosave(app));
         }
         updateUndoRedoButtons();
     }
@@ -2676,7 +2714,7 @@ export function setupCanvas(app) {
         if (redoStack.length > 0) {
             const stateToRestore = redoStack.pop();
             undoStack.push(stateToRestore);
-            renderPageContent(stateToRestore);
+            renderPageContent(stateToRestore).then(() => doAutosave(app));
         }
         updateUndoRedoButtons();
     }
@@ -2801,7 +2839,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.42');
+            const mod = await import('./connections.js?v=1.43');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2859,6 +2897,9 @@ export function setupCanvas(app) {
         console.debug('[realLoadSchematicData] called with:', data);
         window._restoringFromAutosave = false;
         if (!data) return;
+        // A drawing brings its own stamp, or none.
+        drawingIssue = validIssue(data.issue);
+        document.dispatchEvent(new CustomEvent('schematic:issue'));
 
         // Restore shared project details
         if (data.projectDetails) {
@@ -2901,6 +2942,7 @@ export function setupCanvas(app) {
         pageHistories = {};
 
         await renderPageContent(pages[activePageIndex]);
+        await waitForImageSetups(); // so the undo baseline below is the finished drawing
         renderTabBar();
 
         // Seed a fresh undo baseline for the freshly-loaded active page.
