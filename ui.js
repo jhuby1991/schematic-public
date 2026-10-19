@@ -1,8 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.47';
-import { hasDrawings } from './drawings.js?v=1.47';
+import { showNotification, showActionBar } from './utils.js?v=1.48';
+import { hasDrawings } from './drawings.js?v=1.48';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -39,9 +39,9 @@ const HELP_HTML = `
 
   <h3>Labelling</h3>
   <ul>
-    <li>Click <b>Label</b> to add a text box, then type into it.</li>
+    <li>Click <b>Label</b> to add a text box, drag it into place, then double-click it to type. (Or just start typing straight away.)</li>
     <li><b>Move a text box</b>: click it once to select it, then drag it from anywhere. Drag the handle on its right edge to make it wider or narrower.</li>
-    <li><b>Edit its text</b>: click the selected box again, double-click it, or press <b>Enter</b>. Highlight words and use the buttons on the left to make them bold, italic, coloured and so on. With the box selected but not being edited, those buttons change all of its text. <b>Esc</b> or a click elsewhere finishes.</li>
+    <li><b>Edit its text</b>: double-click it, or select it and press <b>Enter</b>. Highlight words and use the buttons on the left to make them bold, italic, coloured and so on. With the box selected but not being edited, those buttons change all of its text. <b>Esc</b> or a click elsewhere finishes.</li>
     <li>Double-click a <b>TERM</b> or <b>STAR</b> label to cycle through its settings.</li>
     <li>Double-click a RAK to name each of its circuits. <b>Clear all</b> empties every name at once; then <b>Save Labels</b> to show none.</li>
   </ul>
@@ -190,7 +190,7 @@ const TOUR_STEPS = [
         selector: '#drawing-toolbar',
         placement: 'right',
         title: 'Labels',
-        body: 'Click <b>Label</b> to add a text box, then type into it. Click a text box once to select and move it; click it again (or double-click) to edit its text.'
+        body: 'Click <b>Label</b> to add a text box. <b>Tip:</b> drag it into place first, then double-click it to type. Any time after, click a text box once to select and move it, and double-click it to edit its text.'
     },
     {
         selector: '#project-details',

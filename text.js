@@ -3,7 +3,7 @@
 // multi-line, auto-wrapping label with rich formatting (bold/italic/
 // underline/colour/alignment/lists), rather than a single-line plain input.
 
-import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.47';
+import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.48';
 
 let drawingCanvas, addTextBtn, textBoxPropertiesPanel;
 let fontSizeInput, boldBtn, italicBtn, underlineBtn, colorInput;
@@ -85,12 +85,18 @@ function withSelectedTextBox(fn) {
 /* ------------------------------------------------------------------ *
  * Moving vs editing
  *
- * A text box works the way one does in slide software. Click it to
- * select it: drag from anywhere on it to move it, and the formatting
- * buttons apply to all of its text. Click it again, double-click it, or
- * press Enter to edit: then the text takes a caret, dragging selects
+ * Click a text box to select it: drag from anywhere on it to move it,
+ * and the formatting buttons apply to all of its text. Double-click it,
+ * or press Enter, to edit: then the text takes a caret, dragging selects
  * text, and the formatting buttons apply to just what is highlighted.
  * Esc or a click elsewhere finishes editing.
+ *
+ * A box added with the Label button starts selected, not being edited,
+ * so it can be dragged into place first. It used to open ready to type,
+ * which held it where it landed (the top-left corner) until Esc. Typing
+ * straight away still works: see "Typing into a new, empty box" below.
+ * A second click on a selected box no longer edits it either - that
+ * caught people who clicked the new box to pick it up.
  *
  * It used to be editable all the time, so only its 5px border would move
  * it, and a click into the text never selected the box - the formatting
@@ -200,10 +206,32 @@ export function initTextTool(canvasEl, toolbarEl, propertiesPanelEl, controls, _
             // from the corner, where a box at (0, 0) would appear off-screen.
             const at = getVisibleCanvasOrigin();
             const box = createTextBoxOnCanvas(at.x, at.y, '', null, false, { hasBackground: false });
+            // Selected, ready to drag into place; double-click (or Enter) to type.
             if (typeof window.setSelectedObject === 'function') window.setSelectedObject(box);
-            setTimeout(() => startEditing(box), 0); // ready to type straight away
         });
     }
+
+    // Typing into a new, empty box: with one selected and not being edited,
+    // a typed character starts editing it and goes in. Otherwise the keys
+    // would be app shortcuts - "Lounge" would turn on Draw Line (L) and
+    // change the cable colour (S). Runs before those shortcut handlers;
+    // moving focus during keydown sends the character to the box. Only
+    // for an empty box, so a box with text keeps its shortcuts; Space is
+    // left alone (it toggles Draw Line).
+    window.addEventListener('keydown', (e) => {
+        if (e.key.length !== 1 || e.key === ' ' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable)) return;
+        if (document.querySelector('.modal.show')) return;
+        withSelectedTextBox(itemData => {
+            const box = itemData.element;
+            if (isEditing(box) || !box.isConnected) return;
+            const editable = getEditable(box);
+            if (!editable || editable.textContent !== '') return;
+            e.stopImmediatePropagation(); // not a shortcut
+            startEditing(box);
+        });
+    }, true);
 
     // Keep track of the highlighted text while editing, so a panel control
     // that takes focus (the colour picker, the font size box) can still
@@ -430,22 +458,12 @@ export function createTextBoxOnCanvas(x, y, text = "", existingId = null, skipSa
     });
     textBoxDiv.appendChild(resizeHandle);
 
-    let pressedWhileSelected = null; // for "click a selected box again to edit it"
     textBoxDiv.addEventListener('mousedown', (e) => {
         if (e.button !== 0 || isEditing(textBoxDiv)) return;
-        const soleSelection = selectedItems.size === 1 && selectedItems.has(id) && textBoxDiv.classList.contains('selected');
-        pressedWhileSelected = soleSelection && !e.shiftKey ? { x: e.clientX, y: e.clientY } : null;
         // Already part of the selection: leave it alone, so a group drag
         // works. Shift+click is handled by the drag code (makeDraggable).
         if (textBoxDiv.classList.contains('selected') || e.shiftKey) return;
         if (typeof window.setSelectedObject === 'function') window.setSelectedObject(textBoxDiv);
-    });
-    textBoxDiv.addEventListener('mouseup', (e) => {
-        const press = pressedWhileSelected;
-        pressedWhileSelected = null;
-        if (!press || e.button !== 0 || isEditing(textBoxDiv)) return;
-        if (Math.abs(e.clientX - press.x) > 3 || Math.abs(e.clientY - press.y) > 3) return; // that was a move
-        startEditing(textBoxDiv, { clientX: e.clientX, clientY: e.clientY });
     });
     textBoxDiv.addEventListener('dblclick', (e) => {
         if (e.target === resizeHandle) return;

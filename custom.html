@@ -592,7 +592,7 @@
             border-color: #007bff;
         }
         /* Text boxes (text.js): select one to move it - from anywhere on it -
-           then click it again, double-click it or press Enter to edit. */
+           then double-click it or press Enter to edit. */
         .canvas-text-box .text-editable { cursor: inherit; }
         .canvas-text-box.editing { cursor: auto; }
         .canvas-text-box.editing .text-editable {
@@ -1374,6 +1374,10 @@
             color: #bbb;
             pointer-events: none;
             font-style: italic;
+        }
+        /* An empty text box that isn't being edited says how to start. */
+        .canvas-text-box:not(.editing) .text-editable:empty:before {
+            content: 'Double-click to type';
         }
 
         #print-info-block-content.print-visible, #pdfInfoRow {
@@ -2587,7 +2591,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.47</span>
+                <span class="app-version" title="Tool version">v1.48</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2989,6 +2993,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.47"></script>
+    <script type="module" src="main.js?v=1.48"></script>
 </body>
 </html>
