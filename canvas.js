@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.46';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.47';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.46';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.46';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.46';
-import { showToast, showConfirm } from './utils.js?v=1.46';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.46';
+import { doAutosave } from './storage.js?v=1.47';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.47';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.47';
+import { showToast, showConfirm } from './utils.js?v=1.47';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.47';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -1398,6 +1398,19 @@ export function setupCanvas(app) {
             div.appendChild(inputEl);
             form.appendChild(div);
         }
+        // Clear all: empties every box in one go, for drawings that want no
+        // circuit names. Only the boxes - Save Labels applies it (an empty
+        // label already means "show nothing"), Close leaves the labels as
+        // they were. Hidden for the DIN-DLI's single label.
+        const clearBtn = document.getElementById('clearRak8LabelsBtn');
+        if (clearBtn) {
+            clearBtn.hidden = count < 2;
+            clearBtn.onclick = function() {
+                const inputs = form.querySelectorAll('input[type="text"]');
+                inputs.forEach(inputEl => { inputEl.value = ''; });
+                if (inputs[0]) inputs[0].focus();
+            };
+        }
         // Show modal (Bootstrap 5)
         const modal = document.getElementById('rak8LabelModal');
         if (modal) {
@@ -1425,6 +1438,7 @@ export function setupCanvas(app) {
                     newLabels.push(val);
                 }
                 // Update and re-render
+                const changed = JSON.stringify(currentEditingLabels.slice(0, count)) !== JSON.stringify(newLabels);
                 currentEditingLabels.splice(0, count, ...newLabels);
                 if (currentEditingType === 'DINDLI') {
                     renderDindliLabel(currentEditingObj, currentEditingLabels);
@@ -1437,6 +1451,10 @@ export function setupCanvas(app) {
                 currentEditingObj = null;
                 currentEditingType = null;
                 currentEditingLabels = null;
+                // A label change is its own undo step (it used to be left out
+                // of the history, so Undo stepped back past it and Redo brought
+                // the old labels back - a Clear all could quietly come undone).
+                if (changed) saveState();
                 doAutosave(app);
             };
         }
@@ -2919,7 +2937,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.46');
+            const mod = await import('./connections.js?v=1.47');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }

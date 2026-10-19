@@ -9,19 +9,19 @@
 // it was issued. Change the drawing afterwards and the stamp comes off until
 // it's issued again.
 
-import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.46';
-import { contentKey, isBlank, displayName } from './drawings.js?v=1.46';
-import { openDrawingData } from './storage.js?v=1.46';
-import { showToast, showConfirm, showActionBar } from './utils.js?v=1.46';
+import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.47';
+import { contentKey, isBlank, displayName } from './drawings.js?v=1.47';
+import { openDrawingData } from './storage.js?v=1.47';
+import { showToast, showConfirm, showActionBar } from './utils.js?v=1.47';
 import {
     FIREBASE, STAFF_DOMAIN, EMULATOR, newIssueCode, normaliseCode, checkUrl, checkUrlShort,
     quickHash, sha256, createIssued, withdrawIssued, lookupIssued, summariseDrawing
-} from './register.js?v=1.46';
-import qrcode from './qrcode.js?v=1.46';
+} from './register.js?v=1.47';
+import qrcode from './qrcode.js?v=1.47';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SIGNED_IN_HINT = 'rakoStaffSignedIn'; // load sign-in straight away next time, so the button is right from the start
-const TOOL_VERSION = 'v1.46';
+const TOOL_VERSION = 'v1.47';
 
 let fb = null;          // the Firebase Auth module and instance, once loaded
 let loading = null;

@@ -2587,7 +2587,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.46</span>
+                <span class="app-version" title="Tool version">v1.47</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2969,6 +2969,8 @@
               </form>
           </div>
           <div class="modal-footer">
+            <!-- Empties every box above; nothing changes on the drawing until Save Labels. -->
+            <button type="button" class="btn btn-outline-danger me-auto" id="clearRak8LabelsBtn" title="Empty every label box. Press Save Labels to show no circuit names, or Close to keep them."><i class="bi bi-eraser"></i> Clear all</button>
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             <button type="button" class="btn btn-primary" id="saveRak8LabelsBtn">Save Labels</button>
           </div>
@@ -2987,6 +2989,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.46"></script>
+    <script type="module" src="main.js?v=1.47"></script>
 </body>
 </html>
