@@ -2086,7 +2086,8 @@
 
         /* ---- Canvas: quieter selection, handles only on the item in hand ---- */
         .canvas-item { transition: outline-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
-        svg line.selected { stroke-width: 3px; }
+        svg line.selected,
+        svg path.wire-corner.selected { stroke-width: 3px; }
         .rotate-handle {
             opacity: 0;
             pointer-events: none;
@@ -2591,7 +2592,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.50</span>
+                <span class="app-version" title="Tool version">v1.51</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2993,6 +2994,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.50"></script>
+    <script type="module" src="main.js?v=1.51"></script>
 </body>
 </html>
