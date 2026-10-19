@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.49';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.50';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.49';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.49';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.49';
-import { showToast, showConfirm } from './utils.js?v=1.49';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.49';
+import { doAutosave } from './storage.js?v=1.50';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.50';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.50';
+import { showToast, showConfirm } from './utils.js?v=1.50';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.50';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -1220,7 +1220,7 @@ export function setupCanvas(app) {
             case 'RAKLink':
                 width = 10 * GRID_SIZE; height = 5 * GRID_SIZE; break;
             case 'HUB':
-                width = 7 * GRID_SIZE; height = 7 * GRID_SIZE; break;
+                width = 6 * GRID_SIZE; height = 6 * GRID_SIZE; break;
             case 'DIN4C':
             case 'DIN4T':
             case 'DIN8S':
@@ -2937,7 +2937,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.49');
+            const mod = await import('./connections.js?v=1.50');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
