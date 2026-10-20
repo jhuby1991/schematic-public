@@ -1,8 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.51';
-import { hasDrawings } from './drawings.js?v=1.51';
+import { showNotification, showActionBar } from './utils.js?v=1.52';
+import { hasDrawings } from './drawings.js?v=1.52';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -32,7 +32,8 @@ const HELP_HTML = `
 
   <h3>Wiring things together</h3>
   <ul>
-    <li>Click <b>Draw Line</b> (or press <b>Space</b>) to start drawing cables, then click from one component to another.</li>
+    <li>Click <b>Draw Line</b> (or press <b>Space</b>) to start drawing cables, then drag across the grid from one component to the next. Each drag draws one straight run; to turn a corner, start the next drag where the last one ended.</li>
+    <li>Click a cable to select it, or <b>Shift</b>+click to add more cables to what's selected.</li>
     <li>Use <b>Connector Colour</b> to pick the cable type. Each type prints in its own colour with a legend. <b>Custom colour…</b> at the bottom draws plain lines in any colour; they print in that colour but aren't listed in the legend.</li>
     <li>Press <b>Space</b> again to go back to moving components.</li>
   </ul>
@@ -66,12 +67,13 @@ const HELP_HTML = `
     <li><b>+</b> / <b>&minus;</b>: zoom in / out. <b>0</b>: back to 100%. <b>Ctrl + scroll</b>: zoom at the pointer</li>
     <li><b>H</b>: Hand tool, drag to move around the drawing</li>
     <li><b>Q W A S D R F</b>: change cable colour while drawing. <b>C</b>: your custom colour (the first time, it asks which)</li>
-    <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b>: undo / redo</li>
-    <li><b>Ctrl+C</b> / <b>Ctrl+X</b> / <b>Ctrl+V</b>: copy / cut / paste (any number of items and wires)</li>
+    <li><b>Ctrl+Z</b> / <b>Ctrl+Y</b> (or <b>Ctrl+Shift+Z</b>): undo / redo</li>
+    <li><b>Ctrl+C</b> / <b>Ctrl+X</b> / <b>Ctrl+V</b>: copy / cut / paste (any number of items and wires). Pasting after a cut puts things back where they were.</li>
     <li><b>Ctrl+D</b>: duplicate what's selected</li>
     <li><b>Arrow keys</b>: nudge what's selected one grid square (<b>Shift</b>: five)</li>
     <li><b>/</b>: add a component by name, at the pointer</li>
     <li><b>Delete</b>: remove what's selected</li>
+    <li><b>Esc</b>: deselect everything</li>
   </ul>
 
   <h3>What the names mean</h3>
@@ -83,7 +85,7 @@ const HELP_HTML = `
     <li><b>Wired RAK Circuits</b>: how many lighting circuits you've used, against the number available.</li>
   </ul>
   <p style="color:#6c757d;font-size:0.9rem;margin-bottom:0;">
-    If either counter turns red you've gone past what the equipment supports. The message next to it tells you what to add.
+    If either counter turns red you've gone past what the equipment supports. The message under it tells you what to add. The counters cover the tab you're on; a red dot on another tab means that tab is over a limit.
   </p>
 `;
 
@@ -416,7 +418,7 @@ export function openWelcome(forced = false) {
         step(1, 'Pick your components',
                 'Open a group in the left-hand panel (RAKs, DIN modules, keypads, sensors) and drag what you need onto the grid.') +
         step(2, 'Wire them up',
-                'Click <b>Draw Line</b>, choose a cable colour, then click from one component to the next.') +
+                'Click <b>Draw Line</b>, choose a cable colour, then drag from one component to the next.') +
         step(3, 'Add your details and print',
                 'Fill in the project fields on the left, then <b>Print Schematic</b> and choose <i>Save as PDF</i>.'),
         `<div style="margin-top:26px;padding-top:22px;border-top:1px solid var(--rako-line);">

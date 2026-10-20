@@ -15,6 +15,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // other, in canvas px (half a grid square). Kept small on purpose: the corner
 // should read as clean and joined, not as a visibly rounded bend.
 const CORNER_RADIUS = 5;
+// Furthest out a wire end can be, in canvas px (matches the limit canvas.js
+// puts on items read from a file).
+const MAX_COORD = 20000;
 
 export function setupConnections(app) {
     // Create or get the SVG overlay for connections
@@ -76,6 +79,7 @@ export function finishConnection(toObj, toNode) {
 }
 
 export function addConnection(conn) {
+    if (!isDrawableLine(conn)) return;
     connections.push(conn);
 }
 
@@ -121,7 +125,7 @@ export function renderConnections() {
         });
         line.addEventListener('mousedown', (e) => {
             e.stopPropagation();
-            selectLine([i]); // single selection on mousedown
+            pickLine(i, e.shiftKey);
             if (svgOverlay && typeof svgOverlay.focus === 'function') {
                 svgOverlay.focus();
             }
@@ -260,6 +264,50 @@ export function clearConnections() {
     renderConnections();
 }
 
+/**
+ * A click on wire `i`. A plain click selects just that wire - any selected
+ * components are dropped first (canvas.js listens for schematic:clearobjects),
+ * so pressing Delete next removes only the wire. It used to keep whatever
+ * was already selected, so Delete took a component out along with the wire.
+ * Shift+click adds the wire to the selection, or takes it out again.
+ */
+export function pickLine(i, additive = false) {
+    if (additive) {
+        selectLine(selectedLineIndices.includes(i)
+            ? selectedLineIndices.filter(j => j !== i)
+            : [...selectedLineIndices, i]);
+        return;
+    }
+    document.dispatchEvent(new CustomEvent('schematic:clearobjects'));
+    selectLine([i]);
+}
+
+/**
+ * The wire passing within `tolerance` canvas px of (x, y), nearest first, or
+ * -1. Wires are drawn 2px wide, so clicking exactly on one was fiddly; the
+ * canvas uses this to let a near miss count.
+ */
+export function findLineNear(x, y, tolerance) {
+    let best = -1, bestDist = Infinity;
+    connections.forEach((c, i) => {
+        if (![c.x1, c.y1, c.x2, c.y2].every(Number.isFinite)) return;
+        const dx = c.x2 - c.x1, dy = c.y2 - c.y1;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 ? Math.max(0, Math.min(1, ((x - c.x1) * dx + (y - c.y1) * dy) / len2)) : 0;
+        const d = Math.hypot(x - (c.x1 + t * dx), y - (c.y1 + t * dy));
+        if (d <= tolerance && d < bestDist) { best = i; bestDist = d; }
+    });
+    return best;
+}
+
+/** A wire worth keeping: four real numbers, and some length to it. */
+export function isDrawableLine(c) {
+    if (!c) return false;
+    const pts = [c.x1, c.y1, c.x2, c.y2].map(Number);
+    if (!pts.every(Number.isFinite)) return false;
+    return pts[0] !== pts[2] || pts[1] !== pts[3];
+}
+
 export function selectLine(indices) {
     if (!Array.isArray(indices)) indices = [indices];
     selectedLineIndices = indices.filter(i => i !== null && i !== undefined);
@@ -292,7 +340,16 @@ export function getConnections() {
 }
 
 export function setConnections(newConnections) {
-    connections = newConnections.map(conn => ({...conn}));
+    // Coordinates as numbers (a hand-edited file may have "200"), and no
+    // zero-length wires: a click in Draw Line mode used to leave one behind,
+    // invisible, but still saved, selected by Ctrl+A and listed in the
+    // printed legend.
+    const clamp = (v) => Math.min(MAX_COORD, Math.max(0, Number(v)));
+    connections = (newConnections || [])
+        .filter(isDrawableLine)
+        .map(conn => ({ ...conn, x1: clamp(conn.x1), y1: clamp(conn.y1), x2: clamp(conn.x2), y2: clamp(conn.y2) }))
+        .filter(isDrawableLine);
+    selectedLineIndices = selectedLineIndices.filter(i => i < connections.length);
     renderConnections();
 }
 
@@ -341,6 +398,9 @@ if (typeof window !== 'undefined') {
         renderConnections,
         clearConnections,
         selectLine,
+        pickLine,
+        findLineNear,
+        isDrawableLine,
         clearLineSelection,
         deleteSelectedLine,
         getSelectedLineIndices,

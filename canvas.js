@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.51';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.52';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.51';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.51';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.51';
-import { showToast, showConfirm } from './utils.js?v=1.51';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.51';
+import { doAutosave } from './storage.js?v=1.52';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.52';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.52';
+import { showToast, showConfirm } from './utils.js?v=1.52';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.52';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -2416,6 +2416,16 @@ export function setupCanvas(app) {
         const pos = getClampedCanvasMousePos(e);
         const snappedEnd = snapToGrid(pos.x, pos.y);
         const orthoEnd = getOrthogonalPoint(lineStart, snappedEnd);
+        // A click without a drag draws nothing. It used to add a wire with
+        // no length: invisible, but saved with the drawing, picked up by
+        // Ctrl+A and copy/paste, and listed in the printed legend.
+        if (orthoEnd.x === lineStart.x && orthoEnd.y === lineStart.y) {
+            if (tempLine && tempLine.parentNode === svgOverlay) svgOverlay.removeChild(tempLine);
+            tempLine = null;
+            isDrawingLine = false;
+            lineStart = null;
+            return;
+        }
         // Find nearest objects for each endpoint
         const startObj = findNearestObject(lineStart.x, lineStart.y);
         const endObj = findNearestObject(orthoEnd.x, orthoEnd.y);
@@ -2550,6 +2560,25 @@ export function setupCanvas(app) {
         const iconPropertiesPanel = document.getElementById('icon-properties-panel');
         if (iconPropertiesPanel) iconPropertiesPanel.style.display = 'none';
     }
+
+    // A plain click on a wire selects only that wire (connections.js asks
+    // for the components to be dropped first).
+    document.addEventListener('schematic:clearobjects', () => clearSelection());
+
+    // Wires are only 2px wide, so a click a few pixels off one used to land
+    // on the empty canvas and clear the selection instead. Captured before
+    // the selection box and the background click see it; not while drawing
+    // lines, so a new cable can still start right beside an existing one.
+    drawingCanvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || isGridLineDrawing || isDrawingLine) return;
+        if (e.target !== drawingCanvas && e.target !== svgOverlay) return;
+        const { x, y } = getCanvasCoordinates(e);
+        const hit = findLineNear(x, y, 6 / (getCanvasScale() || 1));
+        if (hit < 0) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        pickLine(hit, e.shiftKey);
+    }, true);
 
     // Add a click handler to the canvas background to clear selection
     drawingCanvas.addEventListener('mousedown', (e) => {
@@ -2732,6 +2761,11 @@ export function setupCanvas(app) {
         const key = e.key.toLowerCase();
         if (e.key === 'Delete' || e.key === 'Backspace') {
             deleteSelection();
+        } else if (e.key === 'Escape' && !mod) {
+            // Esc lets go of the selection (as well as leaving Draw Line or
+            // the Hand tool, which their own handlers see to). Not when a
+            // dialog or the quick-add box took the key for itself.
+            if (!e.defaultPrevented && (selectedObjects.size || getSelectedLineIndices().length)) clearSelection();
         } else if (e.key.startsWith('Arrow') && !mod && !e.altKey) {
             // Arrow keys: one grid square; with Shift, five.
             const step = GRID_SIZE * (e.shiftKey ? 5 : 1);
@@ -2741,7 +2775,10 @@ export function setupCanvas(app) {
             const snap = snapshotSelection();
             if (!snap) return;
             clipboard = snap;
-            pasteCount = 0;
+            // After a cut, the first paste puts things back where they were
+            // (later pastes step down and across as usual); after a copy it
+            // lands offset, so the copy doesn't hide under the original.
+            pasteCount = key === 'x' ? -1 : 0;
             if (key === 'x') { e.preventDefault(); deleteSelection(); }
         } else if (mod && key === 'v') {
             if (!clipboard) return;
@@ -2829,12 +2866,16 @@ export function setupCanvas(app) {
         const active = document.activeElement;
         const isInput = active && (['input', 'textarea'].includes(active.tagName.toLowerCase()) || active.isContentEditable);
         if (isInput) return;
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-            e.preventDefault();
-            undo();
-        } else if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key.toLowerCase();
+        // Shift+Z is checked first: it's the usual redo (Cmd+Shift+Z on a
+        // Mac), and the plain-Z test used to catch it and undo again instead.
+        if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
             e.preventDefault();
             redo();
+        } else if (mod && key === 'z') {
+            e.preventDefault();
+            undo();
         }
     });
 
@@ -2937,7 +2978,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.51');
+            const mod = await import('./connections.js?v=1.52');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -2991,6 +3032,33 @@ export function setupCanvas(app) {
      * page). Handles both the current multi-page format and files saved
      * before tabs existed, which land entirely on a single "Tab 1".
      */
+    // Positions in a drawing file are only trusted as far as they make sense:
+    // numbers (a hand-edited "200" is fine), not above or left of the page
+    // (dragging can't put anything there either, so it couldn't be reached),
+    // and no further out than MAX_COORD - a position of a billion used to
+    // build a grid so large the browser tab froze.
+    const MAX_COORD = 20000;
+    function sanitiseItems(list) {
+        if (!Array.isArray(list)) return [];
+        const out = [];
+        list.forEach(item => {
+            if (!item || typeof item !== 'object') return;
+            const x = Number(item.x), y = Number(item.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            out.push({ ...item, x: Math.min(MAX_COORD, Math.max(0, Math.round(x))), y: Math.min(MAX_COORD, Math.max(0, Math.round(y))) });
+        });
+        return out;
+    }
+    // Wires the same way, and without the zero-length ones older versions
+    // left behind (they'd still be saved, and listed in the printed legend).
+    function sanitiseConnections(list) {
+        if (!Array.isArray(list)) return [];
+        const clamp = (v) => Math.min(MAX_COORD, Math.max(0, Math.round(Number(v))));
+        return list.filter(isDrawableLine)
+            .map(c => ({ ...c, x1: clamp(c.x1), y1: clamp(c.y1), x2: clamp(c.x2), y2: clamp(c.y2) }))
+            .filter(isDrawableLine);
+    }
+
     async function realLoadSchematicData(data) {
         console.debug('[realLoadSchematicData] called with:', data);
         window._restoringFromAutosave = false;
@@ -2999,29 +3067,34 @@ export function setupCanvas(app) {
         drawingIssue = validIssue(data.issue);
         document.dispatchEvent(new CustomEvent('schematic:issue'));
 
-        // Restore shared project details
-        if (data.projectDetails) {
+        // Restore shared project details. A drawing without any gets the
+        // defaults: the previous drawing's name, reference and so on used to
+        // stay in the fields, so it was saved under the wrong name.
+        {
+            const pd = (data.projectDetails && typeof data.projectDetails === 'object') ? data.projectDetails : { projectName: 'Schematic', version: '1.0' };
+            const text = (v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '';
             const projectNameInput = document.getElementById('formProjectName');
             const dateInput = document.getElementById('formDate');
             const versionInput = document.getElementById('formVersion');
             const salespersonInput = document.getElementById('formSalesman');
             const quoteReferenceInput = document.getElementById('formQuoteReference');
-            if (projectNameInput) projectNameInput.value = data.projectDetails.projectName || '';
-            if (dateInput) dateInput.value = data.projectDetails.date || '';
-            if (versionInput) versionInput.value = data.projectDetails.version || '';
-            if (salespersonInput) salespersonInput.value = data.projectDetails.salesperson || '';
-            if (quoteReferenceInput) quoteReferenceInput.value = data.projectDetails.quoteReference || '';
+            if (projectNameInput) projectNameInput.value = text(pd.projectName);
+            if (dateInput) dateInput.value = text(pd.date);
+            if (versionInput) versionInput.value = text(pd.version);
+            if (salespersonInput) salespersonInput.value = text(pd.salesperson);
+            if (quoteReferenceInput) quoteReferenceInput.value = text(pd.quoteReference);
         }
 
         if (Array.isArray(data.pages) && data.pages.length > 0) {
-            pages = data.pages.map((p, i) => ({
+            pages = data.pages.filter(p => p && typeof p === 'object').map((p, i) => ({
                 id: p.id || makePageId(),
-                name: p.name || `Tab ${i + 1}`,
-                items: Array.isArray(p.items) ? p.items : [],
-                connections: Array.isArray(p.connections) ? p.connections : [],
+                name: (typeof p.name === 'string' && p.name.trim()) ? p.name.slice(0, TAB_NAME_MAX) : `Tab ${i + 1}`,
+                items: sanitiseItems(p.items),
+                connections: sanitiseConnections(p.connections),
                 gridLines: Array.isArray(p.gridLines) ? p.gridLines : [],
                 rectangles: Array.isArray(p.rectangles) ? p.rectangles : []
             }));
+            if (!pages.length) pages = [makeBlankPage('Tab 1')];
             activePageIndex = Number.isInteger(data.activePageIndex) && data.activePageIndex >= 0 && data.activePageIndex < pages.length
                 ? data.activePageIndex : 0;
         } else {
@@ -3030,8 +3103,8 @@ export function setupCanvas(app) {
             pages = [{
                 id: makePageId(),
                 name: 'Tab 1',
-                items: Array.isArray(data.items) ? data.items : [],
-                connections: Array.isArray(data.connections) ? data.connections : [],
+                items: sanitiseItems(data.items),
+                connections: sanitiseConnections(data.connections),
                 gridLines: Array.isArray(data.gridLines) ? data.gridLines : [],
                 rectangles: Array.isArray(data.rectangles) ? data.rectangles : []
             }];
@@ -3087,7 +3160,7 @@ export function setupCanvas(app) {
 
     function renamePage(index, name) {
         if (!pages[index]) return;
-        const trimmed = (name || '').trim();
+        const trimmed = (name || '').trim().slice(0, TAB_NAME_MAX);
         pages[index].name = trimmed || pages[index].name;
         renderTabBar();
         doAutosave(app);
@@ -3115,6 +3188,8 @@ export function setupCanvas(app) {
         }
     }
 
+    const TAB_NAME_MAX = 60;
+
     /** Build the DOM structure for the page-tabs bar. */
     function renderTabBar() {
         const bar = document.getElementById('pageTabsBar');
@@ -3123,16 +3198,21 @@ export function setupCanvas(app) {
         pages.forEach((page, i) => {
             const tab = document.createElement('div');
             tab.className = 'page-tab' + (i === activePageIndex ? ' active' : '');
+            // The counters on the left only cover the tab on screen, so a tab
+            // that's over a limit is marked while you're on another one.
+            const overLimit = i !== activePageIndex && pageOverLimit(page);
+            if (overLimit) tab.classList.add('over-limit');
 
             const label = document.createElement('span');
             label.className = 'page-tab-label';
             label.textContent = page.name;
-            label.title = 'Double-click to rename';
+            label.title = (overLimit ? `${page.name}: over a DPU or circuit limit` : page.name) + ' (double-click to rename)';
             label.addEventListener('dblclick', (e) => {
                 e.stopPropagation();
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.className = 'page-tab-label-input';
+                input.maxLength = TAB_NAME_MAX;
                 input.value = page.name;
                 label.replaceWith(input);
                 input.focus();
@@ -3175,6 +3255,26 @@ export function setupCanvas(app) {
         addBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
         addBtn.addEventListener('click', addPage);
         bar.appendChild(addBtn);
+        // Keep the tab you're on in view - a new tab added past the right
+        // edge of a full bar used to stay hidden off to the side.
+        const activeTab = bar.querySelector('.page-tab.active');
+        if (activeTab) {
+            const barRect = bar.getBoundingClientRect(), tabRect = activeTab.getBoundingClientRect();
+            const addWidth = addBtn.getBoundingClientRect().width;
+            if (tabRect.right > barRect.right - addWidth) bar.scrollLeft += tabRect.right - (barRect.right - addWidth) + 4;
+            else if (tabRect.left < barRect.left) bar.scrollLeft -= barRect.left - tabRect.left + 4;
+        }
+    }
+
+    // Same rules as the DPU and circuit counters, read from a tab's saved
+    // items rather than the live canvas.
+    function pageOverLimit(page) {
+        const count = (types) => (page.items || []).filter(it => it && types.includes(normalizeType(it.type))).length;
+        const dpuUsed = count(['DIN4C', 'DIN4T', 'DIN8S']) * 8 + count(['DINDLI']) * 16;
+        const dpuAvailable = count(['DINLINK']) * 64;
+        const circuitsUsed = count(['RAK8']) * 8;
+        const circuitsAvailable = count(['RAKLink']) * 32;
+        return dpuUsed > dpuAvailable || circuitsUsed > circuitsAvailable;
     }
 
     app.tabs = {
@@ -3499,12 +3599,11 @@ export function setupCanvas(app) {
         const { capacity, usage } = calculateDPU();
         dpuValue.textContent = `${usage} / ${capacity}`;
         
-        // Show warning if: usage exceeds capacity OR if there are DIN modules but no DIN-LINK (capacity is 0 but usage > 0)
-        if ((capacity > 0 && usage > capacity) || (capacity === 0 && usage > 0)) {
-            dpuWarning.style.display = 'inline';
-        } else {
-            dpuWarning.style.display = 'none';
-        }
+        // Over the limit: more used than available - which includes DIN
+        // modules with no DIN-LINK at all (0 available).
+        const over = usage > capacity;
+        dpuWarning.style.display = over ? 'block' : 'none';
+        dpuDisplay.classList.toggle('over-limit', over);
     }
 
     // Initialize DPU display on setup
@@ -3541,11 +3640,11 @@ export function setupCanvas(app) {
         const { capacity, usage } = calculateCircuits();
         circuitValue.textContent = `${usage} / ${capacity}`;
         
-        if (capacity > 0 && usage > capacity) {
-            circuitWarning.style.display = 'inline';
-        } else {
-            circuitWarning.style.display = 'none';
-        }
+        // Same rule as DPU: a RAK8 with no RAK-LINK (8 / 0) is over the
+        // limit too. It used to show 8 / 0 with no warning at all.
+        const over = usage > capacity;
+        circuitWarning.style.display = over ? 'block' : 'none';
+        circuitDisplay.classList.toggle('over-limit', over);
     }
 
     // Initialize circuit display on setup

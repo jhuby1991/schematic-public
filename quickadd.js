@@ -5,9 +5,9 @@
 // - The search box at the top of the palette filters every group at once;
 //   matching items can be dragged out as usual, and Enter adds the first.
 
-import { createTextBoxOnCanvas, startEditing } from './text.js?v=1.51';
-import { createIconOnCanvas, ICON_CATEGORIES } from './icons.js?v=1.51';
-import { getVisibleCanvasOrigin } from './zoom.js?v=1.51';
+import { createTextBoxOnCanvas, startEditing } from './text.js?v=1.52';
+import { createIconOnCanvas, ICON_CATEGORIES } from './icons.js?v=1.52';
+import { getVisibleCanvasOrigin } from './zoom.js?v=1.52';
 
 const MAX_RESULTS = 40;
 const norm = (s) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
@@ -47,11 +47,15 @@ function search(entries, query) {
         const words = e.name.toLowerCase().split(/[\s\-_()]+/);
         let score = null;
         if (name === q || type === q) score = 0;
-        else if (name.startsWith(q) || type.startsWith(q)) score = 1;
-        else if (words.some(w => w.startsWith(q))) score = 2;
+        // A word in the name starting with it counts as much as the name
+        // starting with it: "link" finds RAK-Link and DIN-LINK as readily as
+        // the "Link Supply" label.
+        else if (name.startsWith(q) || type.startsWith(q) || words.some(w => w.startsWith(q))) score = 1;
         else if (name.includes(q) || type.includes(q)) score = 3;
         else if (norm(e.group).includes(q)) score = 4;
-        if (score !== null) scored.push({ e, score: score + (e.kind === 'icon' ? 0.5 : 0), i });
+        // On a tie, real equipment before printed labels, and both before icons.
+        const nudge = e.kind === 'icon' ? 0.5 : /^labels?$/i.test((e.group || '').trim()) ? 0.25 : 0;
+        if (score !== null) scored.push({ e, score: score + nudge, i });
     });
     scored.sort((a, b) => a.score - b.score || a.i - b.i);
     return scored.slice(0, MAX_RESULTS).map(s => s.e);

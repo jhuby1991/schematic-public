@@ -153,6 +153,14 @@ export function initIconTool(canvasEl, propertiesPanelEl, { sizeInput, colorInpu
                 }
             }
         });
+        // When the box is left (Enter, Tab or a click away), show the size
+        // actually used: 5000 used to stay in the box while the icon was
+        // capped at 96, and 0 stayed while the icon kept its old size.
+        iconSizeInput.addEventListener('change', () => {
+            if (selectedItems.size !== 1) return;
+            const itemData = itemsOnCanvas.get(selectedItems.values().next().value);
+            if (itemData && itemData.type === 'Icon') iconSizeInput.value = itemData.size || DEFAULT_ICON_SIZE;
+        });
     }
     if (iconColorInput) {
         iconColorInput.addEventListener('input', () => {

@@ -2,13 +2,13 @@
 // Keeping work safe: autosave into Recent drawings (drawings.js), Save File
 // and Load File, Print, and the status bar's "saved" indicator.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.51';
-import { showToast, showActionBar } from './utils.js?v=1.51';
-import { printWithTip } from './ui.js?v=1.51';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.52';
+import { showToast, showActionBar } from './utils.js?v=1.52';
+import { printWithTip } from './ui.js?v=1.52';
 import {
     META_PREFIX, contentKey, isBlank, displayName, friendlyTime, newDrawingId,
     listDrawings, readDrawing, writeDrawing, findDrawingByContent, migrateLegacy, openRecentDialog
-} from './drawings.js?v=1.51';
+} from './drawings.js?v=1.52';
 
 /* Autosave is coalesced: the first change schedules one write a moment
    later and any changes in between ride along with it (the write reads the
@@ -42,10 +42,12 @@ function writeAutosave() {
     if (!data) return;
     const key = contentKey(data);
     if (key !== storedKey) document.dispatchEvent(new CustomEvent('schematic:content')); // e.g. an issue stamp no longer matching
-    // Nothing drawn yet: nothing to keep (and a drawing that's been cleared
-    // keeps its last real version rather than being blanked).
-    if (isBlank(data) || key === storedKey) { renderSaveStatus(data, key); return; }
     const isNew = !currentId || forkOnNextWrite;
+    // Nothing drawn yet: nothing to keep. But a kept drawing that has been
+    // cleared is saved as cleared - it used to keep its last version, so
+    // everything deleted came back on the next reload while the status bar
+    // said "Autosaved".
+    if ((isBlank(data) && isNew) || key === storedKey) { renderSaveStatus(data, key); return; }
     if (isNew) { currentId = newDrawingId(); forkOnNextWrite = false; }
     storageWorks = writeDrawing(currentId, data, { savedToFile: key === fileKey });
     if (storageWorks) {
@@ -164,6 +166,13 @@ export async function openDrawingData(data) {
     onNewWorkKept = null;
     await openDrawing(data, { fromFile: true });
     return leaving;
+}
+
+/** A saved schematic: tabs (`pages`), or the older single-sheet layout. */
+function looksLikeDrawing(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+    if (Array.isArray(data.pages)) return data.pages.some(p => p && typeof p === 'object' && (Array.isArray(p.items) || Array.isArray(p.connections)));
+    return Array.isArray(data.items) || Array.isArray(data.connections);
 }
 
 function currentName() {
@@ -298,6 +307,13 @@ export function setupStorage(app) {
                     return;
                 }
                 event.target.value = '';
+                // Valid JSON isn't enough: it has to look like a drawing.
+                // {"foo": 1} used to open as an empty drawing that kept the
+                // previous one's name and "Saved to file" status.
+                if (!looksLikeDrawing(data)) {
+                    showToast("That file isn't a saved schematic, or it's damaged", 'error', 4500);
+                    return;
+                }
                 const leaving = currentId ? currentName() : null;
                 onNewWorkKept = null;
                 try {

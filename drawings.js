@@ -87,7 +87,10 @@ export function isBlank(data) {
 
 export function displayName(projectName) {
     const name = (projectName || '').trim();
-    return !name || name === DEFAULT_NAME ? 'Untitled drawing' : name;
+    // The name as it appears in the Name box. The starting name, "Schematic",
+    // used to be listed as "Untitled drawing", so Recent didn't match what
+    // was on screen.
+    return name || 'Untitled drawing';
 }
 
 function summarise(id, data) {

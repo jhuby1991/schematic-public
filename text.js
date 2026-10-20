@@ -3,7 +3,7 @@
 // multi-line, auto-wrapping label with rich formatting (bold/italic/
 // underline/colour/alignment/lists), rather than a single-line plain input.
 
-import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.51';
+import { getVisibleCanvasOrigin, getZoom } from './zoom.js?v=1.52';
 
 let drawingCanvas, addTextBtn, textBoxPropertiesPanel;
 let fontSizeInput, boldBtn, italicBtn, underlineBtn, colorInput;
@@ -276,6 +276,21 @@ export function initTextTool(canvasEl, toolbarEl, propertiesPanelEl, controls, _
                 if (newSize >= 8 && newSize <= 72) {
                     itemData.fontSize = newSize;
                     itemData.element.querySelector('.text-editable').style.fontSize = `${newSize}px`;
+                    _saveState();
+                }
+            });
+        });
+        // Leaving the box settles an out-of-range size on the nearest one
+        // allowed (8-72) and shows it. 500 used to leave the text at 50px -
+        // the last in-range value typed on the way - with 500 in the box.
+        fontSizeInput.addEventListener('change', () => {
+            withSelectedTextBox(itemData => {
+                const typed = parseInt(fontSizeInput.value, 10);
+                const size = Number.isFinite(typed) ? Math.max(8, Math.min(72, typed)) : (itemData.fontSize || 12);
+                fontSizeInput.value = size;
+                if (size !== itemData.fontSize) {
+                    itemData.fontSize = size;
+                    itemData.element.querySelector('.text-editable').style.fontSize = `${size}px`;
                     _saveState();
                 }
             });

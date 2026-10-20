@@ -224,6 +224,21 @@
              padding: 0.2rem 0.4rem;
              height: calc(1.5em + 0.4rem + 2px);
         }
+        /* DPU / circuit counters: the numbers stay on one line, and the
+           "Over Limit" note sits on its own line underneath instead of
+           squeezing "40 / 32" onto two lines and spilling out of the box. */
+        #project-details #dpuDisplay, #project-details #circuitDisplay { flex-wrap: wrap; height: auto; }
+        #dpuValue, #circuitValue { white-space: nowrap; flex-shrink: 0; }
+        #dpuWarning, #circuitWarning {
+            flex-basis: 100%;
+            margin-left: 0 !important;
+            font-size: 0.72rem;
+            line-height: 1.3;
+            padding-top: 2px;
+        }
+        #dpuDisplay.over-limit, #circuitDisplay.over-limit { border-color: #dc3545 !important; }
+        #dpuDisplay.over-limit #dpuValue,
+        #circuitDisplay.over-limit #circuitValue { color: #dc3545; font-weight: 600; }
         .date-field-row {
             display: flex;
             gap: 6px;
@@ -242,9 +257,13 @@
 
         #palette {
             padding: 15px;
-            overflow-y: auto; 
-            flex-grow: 1; 
-            background-color: #e9ecef; 
+            overflow-y: auto;
+            flex-grow: 1;
+            background-color: #e9ecef;
+            /* On a short screen the project details used to squeeze the
+               palette down to just its search box. Now it keeps a usable
+               height and the whole left column scrolls instead. */
+            min-height: min(260px, 45vh);
         }
         .palette-group-title {
             font-weight: bold;
@@ -414,6 +433,25 @@
         .page-tab:hover:not(.active) {
             background: #F4F4F4;
         }
+        /* Long tab names are cut short with an ellipsis (the full name is
+           in the tooltip) instead of stretching one tab across the bar. */
+        .page-tab-label {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        /* A tab whose counters are over the limit, shown while you're on a
+           different tab (the counters on the left only cover this one). */
+        .page-tab.over-limit .page-tab-label::before {
+            content: '';
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            margin-right: 6px;
+            border-radius: 50%;
+            background: #dc3545;
+            vertical-align: 1px;
+        }
         .page-tab-label-input {
             font-size: 0.82rem;
             border: 1px solid var(--rako-accent);
@@ -447,6 +485,12 @@
             border-radius: 2px;
             cursor: pointer;
             font-size: 0.95rem;
+            /* Stays at the right-hand end when there are more tabs than fit */
+            position: sticky;
+            right: 0;
+            flex-shrink: 0;
+            background: var(--rako-panel);
+            min-height: 26px;
         }
         .page-tab-add:hover {
             background: #E4E4E4;
@@ -2592,7 +2636,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.51</span>
+                <span class="app-version" title="Tool version">v1.52</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2994,6 +3038,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.51"></script>
+    <script type="module" src="main.js?v=1.52"></script>
 </body>
 </html>
