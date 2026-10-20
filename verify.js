@@ -1,8 +1,8 @@
 // verify.js
 // The public check page: is this code in Rako's register of issued drawings?
 
-import { normaliseCode, lookupIssued } from './register.js?v=1.52';
-import { redirectIfOldAddress } from './moved.js?v=1.52';
+import { normaliseCode, lookupIssued } from './register.js?v=1.53';
+import { redirectIfOldAddress } from './moved.js?v=1.53';
 
 redirectIfOldAddress(); // the old GitHub Pages address: on to the new one
 

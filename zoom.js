@@ -41,6 +41,44 @@ let handMode = false;
 let pan = null; // the pan gesture in progress, if any
 
 const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+/* --- Crisp zoom levels ---
+   Every cable and component sits on the 10px grid. When a grid square comes
+   out as a whole number of screen pixels (100%, 110%, 125%... on a Retina
+   screen) they all line up with the screen's pixels the same way, so every
+   cable and corner looks the same. In between - say 133% on a Retina
+   screen, where a square is 26.6 pixels - neighbouring cables land on
+   different fractions of a pixel, and the browser's smoothing makes some
+   corners look rounder or heavier than others and the lines alternately 5
+   and 6 pixels thick. The drawing itself, and the printout, are the same
+   either way; this is only about how the screen draws it.
+   So zooming by pinch or Ctrl+scroll settles on the nearest crisp zoom once
+   you stop (on a Retina screen the nearest 5%), and Fit and the +/- steps
+   use crisp zooms too. 100% is left exactly as it is: it's the print size. */
+const GRID_PX = 10;
+const SETTLE_MS = 160;
+function crispZoom(z, round = Math.round) {
+    const perZoom = GRID_PX * (window.devicePixelRatio || 1); // screen pixels per grid square at 100%
+    let c = round(z * perZoom) / perZoom;
+    if (c < MIN_ZOOM - 1e-9) c = Math.ceil(MIN_ZOOM * perZoom) / perZoom;
+    if (c > MAX_ZOOM + 1e-9) c = Math.floor(MAX_ZOOM * perZoom) / perZoom;
+    return c;
+}
+/** The +/- steps, each moved to the nearest crisp zoom for this screen (100% stays 100%). */
+function crispSteps() {
+    const steps = ZOOM_STEPS.map(s => (s === PRINT_ZOOM ? s : crispZoom(s)));
+    return steps.filter((s, i) => i === 0 || Math.abs(s - steps[i - 1]) > 1e-6);
+}
+let settleTimer = null;
+/** After a pinch or Ctrl+scroll stops, glide the last little way to a crisp zoom. */
+function settleZoomSoon(clientX, clientY) {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+        settleTimer = null;
+        const target = crispZoom(zoom);
+        if (Math.abs(target - zoom) > 1e-6) zoomAt(target, clientX, clientY, { animate: true });
+    }, SETTLE_MS);
+}
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
 /** Current view zoom (1 = 100% = print size). */
@@ -140,6 +178,7 @@ export function setupZoomPan() {
         else if (e.deltaMode === 2) dy *= 400;  // pages
         dy = Math.max(-150, Math.min(150, dy)); // one fast flick shouldn't jump end to end
         zoomAt(zoom * Math.exp(-dy * WHEEL_ZOOM_RATE), e.clientX, e.clientY);
+        settleZoomSoon(e.clientX, e.clientY);
     }, { passive: false });
 
     // Safari sends trackpad pinches as gesture events rather than Ctrl+wheel.
@@ -150,7 +189,7 @@ export function setupZoomPan() {
         e.preventDefault();
         zoomAt(gestureStartZoom * e.scale, e.clientX, e.clientY);
     });
-    wrapper.addEventListener('gestureend', () => { gestureStartZoom = null; });
+    wrapper.addEventListener('gestureend', (e) => { gestureStartZoom = null; settleZoomSoon(e.clientX, e.clientY); });
 
     // --- Panning: drag with the middle mouse button at any time, or with the
     // left button while the Hand tool is on. Captured at the wrapper, before
@@ -233,8 +272,11 @@ function applyZoom(z) {
     if (display) display.textContent = `${Math.round(zoom * 100)}%`;
     const zoomInBtn = document.getElementById('zoomInBtn');
     const zoomOutBtn = document.getElementById('zoomOutBtn');
-    if (zoomInBtn) zoomInBtn.disabled = zoom >= MAX_ZOOM - 1e-6;
-    if (zoomOutBtn) zoomOutBtn.disabled = zoom <= MIN_ZOOM + 1e-6;
+    // Against the crisp steps: on a standard screen the smallest is 30%
+    // (25% isn't a whole number of pixels per grid square there).
+    const steps = crispSteps();
+    if (zoomInBtn) zoomInBtn.disabled = zoom >= steps[steps.length - 1] - 1e-6;
+    if (zoomOutBtn) zoomOutBtn.disabled = zoom <= steps[0] + 1e-6;
 }
 
 /** Where the canvas's top-left corner is on screen, in px from the view's top-left. */
@@ -346,9 +388,10 @@ function zoomAt(newZoom, clientX, clientY, { animate = false } = {}) {
 function stepZoom(direction) {
     const eps = 1e-3;
     const from = viewAnimation ? viewAnimation.targetZoom : zoom;
+    const steps = crispSteps();
     const next = direction > 0
-        ? ZOOM_STEPS.find(s => s > from + eps)
-        : [...ZOOM_STEPS].reverse().find(s => s < from - eps);
+        ? steps.find(s => s > from + eps)
+        : [...steps].reverse().find(s => s < from - eps);
     if (next != null) zoomAt(next, null, null, { animate: true });
 }
 
@@ -392,10 +435,11 @@ function getDrawingExtent() {
 function fitPage() {
     const area = getDrawingExtent();
     if (!area.width || !area.height) return;
-    const target = clampZoom(Math.min(
+    // Rounded down to a crisp zoom, so it still fits.
+    const target = crispZoom(clampZoom(Math.min(
         (wrapper.clientWidth - FIT_PADDING_PX * 2) / area.width,
         (wrapper.clientHeight - FIT_PADDING_PX * 2) / area.height
-    ));
+    )), Math.floor);
     const from = getOrigin();
     const to = {
         x: (wrapper.clientWidth - area.width * target) / 2 - area.left * target,

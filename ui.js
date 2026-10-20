@@ -1,8 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.52';
-import { hasDrawings } from './drawings.js?v=1.52';
+import { showNotification, showActionBar } from './utils.js?v=1.53';
+import { hasDrawings } from './drawings.js?v=1.53';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -28,6 +28,7 @@ const HELP_HTML = `
     <li><b>Move around</b>: scroll, or drag with the middle mouse button. Without one, turn on the <b>Hand tool</b> (press <b>H</b>) and drag. Press <b>H</b> or <b>Esc</b> to put it away.</li>
     <li><b>Fit</b> shows the whole page, plus anything placed off it. Click the percentage to go back to <b>100%</b>, the size it prints at.</li>
     <li>Zoom only changes your view. The printout is the same whatever zoom you're at.</li>
+    <li>After a pinch or Ctrl+scroll the zoom settles on the nearest level that lines up with your screen's pixels (135% rather than 133%, say), so every cable and corner looks the same.</li>
   </ul>
 
   <h3>Wiring things together</h3>
