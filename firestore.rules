@@ -9,26 +9,64 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // A signed-in, verified @rakocontrols.com Google account.
+    function isStaff() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower().matches('.*@rakocontrols[.]com');
+    }
+
+    // Who can read the usage records (dashboard.html). Keep this list in
+    // step with USAGE_ADMINS in usage-shared.js; lower case.
+    function isUsageAdmin() {
+      return isStaff()
+        && request.auth.token.email.lower() in ['jordanhuby@rakocontrols.com'];
+    }
+
+    // A record written in the signed-in person's own name.
+    function ownRecord() {
+      return request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+    }
+
     // Saved schematics from the private version of the tool: Rako staff only.
     match /schematics/{schematicId} {
       allow read, write: if request.auth != null
         && request.auth.token.email.matches('.*@rakocontrols[.]com$');
     }
 
-    // Tool usage records: Rako staff only.
-    match /toolUsage/{document=**} {
-      allow read, write: if request.auth != null
-        && request.auth.token.email.matches('.*@rakocontrols[.]com$');
+    // ---- Tool usage (usage.js). Only signed-in staff are ever recorded,
+    // each only in their own name; only the usage admins can read it back.
+
+    // What each person did: batches of actions. Also the older
+    // {uid, email, action, ts} records from the private version of the tool.
+    match /toolUsage/{id} {
+      allow read: if isUsageAdmin();
+      allow create: if isStaff() && ownRecord()
+        && request.resource.data.ts == request.time;
+      allow update, delete: if false;
+    }
+
+    // Each person's running totals for a day: {uid}_{YYYY-MM-DD}.
+    match /toolUsageDaily/{id} {
+      allow read: if isUsageAdmin();
+      allow create, update: if isStaff() && ownRecord()
+        && id == request.auth.uid + '_' + request.resource.data.day
+        && request.resource.data.day.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}');
+      allow delete: if false;
+    }
+
+    // What each person is doing right now: one record each, rewritten.
+    match /toolPresence/{uid} {
+      allow read: if isUsageAdmin();
+      allow create, update: if isStaff() && ownRecord()
+        && uid == request.auth.uid
+        && request.resource.data.lastSeen == request.time;
+      allow delete: if false;
     }
 
     // Drawings issued by Rako staff from the schematic tool (sales.js).
     match /issuedDrawings/{code} {
-      function isStaff() {
-        return request.auth != null
-          && request.auth.token.email_verified == true
-          && request.auth.token.email.lower().matches('.*@rakocontrols[.]com');
-      }
-
       // Anyone holding a code can look it up (the check page), but nobody
       // can list the register or search it.
       allow get: if true;

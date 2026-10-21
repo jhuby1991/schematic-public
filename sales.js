@@ -9,19 +9,20 @@
 // it was issued. Change the drawing afterwards and the stamp comes off until
 // it's issued again.
 
-import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.53';
-import { contentKey, isBlank, displayName } from './drawings.js?v=1.53';
-import { openDrawingData } from './storage.js?v=1.53';
-import { showToast, showConfirm, showActionBar } from './utils.js?v=1.53';
+import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.54';
+import { contentKey, isBlank, displayName } from './drawings.js?v=1.54';
+import { openDrawingData } from './storage.js?v=1.54';
+import { showToast, showConfirm, showActionBar } from './utils.js?v=1.54';
 import {
     FIREBASE, STAFF_DOMAIN, EMULATOR, newIssueCode, normaliseCode, checkUrl, checkUrlShort,
     quickHash, sha256, createIssued, withdrawIssued, lookupIssued, summariseDrawing
-} from './register.js?v=1.53';
-import qrcode from './qrcode.js?v=1.53';
+} from './register.js?v=1.54';
+import qrcode from './qrcode.js?v=1.54';
+import { USAGE_ADMINS } from './usage-shared.js?v=1.54';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SIGNED_IN_HINT = 'rakoStaffSignedIn'; // load sign-in straight away next time, so the button is right from the start
-const TOOL_VERSION = 'v1.53';
+const TOOL_VERSION = 'v1.54';
 
 let fb = null;          // the Firebase Auth module and instance, once loaded
 let loading = null;
@@ -29,10 +30,30 @@ let user = null;        // a signed-in, verified Rako account - never anyone els
 let busy = false;
 let panel = null;
 
+// Other parts of the tool that need to know who is signed in (usage.js).
+// They only ever hear about a verified Rako account, or null.
+const staffListeners = new Set();
+const signOutListeners = new Set();
+
+/** Call `fn(user | null)` now and whenever a Rako account signs in or out. */
+export function onStaffChange(fn) {
+    staffListeners.add(fn);
+    fn(user);
+    return () => staffListeners.delete(fn);
+}
+/** `fn()` runs (and is waited for, briefly) just before signing out, while the account can still write. */
+export function onBeforeSignOut(fn) {
+    signOutListeners.add(fn);
+    return () => signOutListeners.delete(fn);
+}
+function announceStaff() {
+    staffListeners.forEach(fn => { try { fn(user); } catch (e) {} });
+}
+
 const isStaff = (u) => !!(u && u.emailVerified && (u.email || '').toLowerCase().endsWith('@' + STAFF_DOMAIN));
 
 /** "jordan.huby@rakocontrols.com" -> "Jordan Huby", when the account has no display name. */
-function staffName(u) {
+export function staffName(u) {
     if (u.displayName && u.displayName.trim()) return u.displayName.trim();
     return (u.email || '').split('@')[0].split(/[._-]+/).filter(Boolean)
         .map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
@@ -61,6 +82,7 @@ function loadFirebase() {
             user = u || null;
             remember(!!user);
             render();
+            announceStaff();
         });
         if (typeof auth.authStateReady === 'function') await auth.authStateReady();
         return fb;
@@ -103,6 +125,9 @@ async function signIn() {
 
 async function signOut() {
     if (!fb) return;
+    // Anything waiting to be written in this account's name goes first (never more than a moment).
+    const pending = [...signOutListeners].map(fn => Promise.resolve().then(fn).catch(() => {}));
+    await Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, 1500))]);
     await fb.signOut(fb.auth);
     showToast('Signed out', 'info');
 }
@@ -209,6 +234,7 @@ async function issueDrawing() {
             return;
         }
         setDrawingIssue({ code, name, email: user.email, issuedAt: Date.now(), localHash: quickHash(key) });
+        document.dispatchEvent(new CustomEvent('schematic:issued', { detail: { code } }));
         showToast(`Issued as ${code}. Print it to share it with the stamp.`, 'success', 5000);
     } catch (e) {
         showToast("Couldn't issue the drawing. Please try again.", 'error', 5000);
@@ -235,6 +261,7 @@ async function withdraw() {
         const result = await withdrawIssued(st.issue.code, await user.getIdToken());
         if (result.ok) {
             setDrawingIssue(null);
+            document.dispatchEvent(new CustomEvent('schematic:withdrawn', { detail: { code: st.issue.code } }));
             showToast(`${st.issue.code} withdrawn`, 'success');
         } else {
             showToast(result.reason === 'refused' ? 'Only the person who issued a drawing can withdraw it.' : "Couldn't withdraw it. Please try again.", 'error', 5000);
@@ -331,7 +358,9 @@ function renderPanel() {
             <div class="sp-head"><span class="sp-avatar" aria-hidden="true">${escapeHtml(initials(name))}</span><div><h3>${escapeHtml(name)}</h3>
             <p class="sp-email" title="${escapeHtml(user.email)}">${escapeHtml(user.email)}</p></div>
             <button type="button" class="btn btn-sm btn-link sp-signout" data-act="signout">Sign out</button></div>
-            <div class="sp-section">${body}</div>`;
+            <div class="sp-section">${body}</div>
+            ${USAGE_ADMINS.includes((user.email || '').toLowerCase()) ? `<a class="btn btn-sm btn-outline-secondary sp-wide sp-dash" href="dashboard.html" target="_blank" rel="noopener"><i class="bi bi-bar-chart-line" aria-hidden="true"></i> Usage dashboard</a>` : ''}
+            <p class="sp-note"><i class="bi bi-activity" aria-hidden="true"></i> While you're signed in, Rako keeps a record of how you use the tool (what you add, print and issue, and the drawing's name). Nothing is recorded when you're signed out.</p>`;
     }
     panel.innerHTML = html;
 }
