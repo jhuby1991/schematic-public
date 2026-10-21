@@ -2,13 +2,13 @@
 // Keeping work safe: autosave into Recent drawings (drawings.js), Save File
 // and Load File, Print, and the status bar's "saved" indicator.
 
-import { getSchematicData, loadSchematicData } from './canvas.js?v=1.53';
-import { showToast, showActionBar } from './utils.js?v=1.53';
-import { printWithTip } from './ui.js?v=1.53';
+import { getSchematicData, loadSchematicData } from './canvas.js?v=1.54';
+import { showToast, showActionBar } from './utils.js?v=1.54';
+import { printWithTip } from './ui.js?v=1.54';
 import {
     META_PREFIX, contentKey, isBlank, displayName, friendlyTime, newDrawingId,
     listDrawings, readDrawing, writeDrawing, findDrawingByContent, migrateLegacy, openRecentDialog
-} from './drawings.js?v=1.53';
+} from './drawings.js?v=1.54';
 
 /* Autosave is coalesced: the first change schedules one write a moment
    later and any changes in between ride along with it (the write reads the
@@ -129,7 +129,7 @@ function renderSaveStatus(data = readCurrent(), key = data && contentKey(data)) 
  * or, when exactly the same drawing is already kept, carries on with that.
  * Whatever was on screen is stored first, so opening never loses it.
  */
-async function openDrawing(data, { id = null, fromFile = false } = {}) {
+async function openDrawing(data, { id = null, fromFile = false, how = fromFile ? 'file' : 'recent' } = {}) {
     flushAutosave();
     opening = true;
     try {
@@ -156,6 +156,8 @@ async function openDrawing(data, { id = null, fromFile = false } = {}) {
         doAutosave(); // into Recent drawings straight away
     }
     renderSaveStatus(now, key);
+    // A different drawing is on screen (usage.js starts counting changes afresh from here).
+    document.dispatchEvent(new CustomEvent('schematic:opened', { detail: { how } }));
     document.dispatchEvent(new CustomEvent('schematic:content'));
 }
 
@@ -164,7 +166,7 @@ export async function openDrawingData(data) {
     flushAutosave();
     const leaving = currentId ? currentName() : null;
     onNewWorkKept = null;
-    await openDrawing(data, { fromFile: true });
+    await openDrawing(data, { fromFile: true, how: 'register' });
     return leaving;
 }
 
@@ -212,7 +214,7 @@ async function startNewDrawing() {
     flushAutosave();
     const leaving = currentId ? currentName() : null;
     onNewWorkKept = null;
-    await openDrawing(blankDrawing());
+    await openDrawing(blankDrawing(), { how: 'new' });
     currentId = null;
     if (leaving) showToast(`New drawing started. “${leaving}” is in Recent drawings.`, 'success', 3500);
 }

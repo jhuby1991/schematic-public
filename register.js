@@ -40,8 +40,8 @@ function emulator() {
 }
 export const EMULATOR = emulator();
 
-const DOCS = `projects/${FIREBASE.projectId}/databases/(default)/documents`;
-const API = (EMULATOR ? EMULATOR.firestore : 'https://firestore.googleapis.com') + '/v1/';
+export const DOCS = `projects/${FIREBASE.projectId}/databases/(default)/documents`;
+export const API = (EMULATOR ? EMULATOR.firestore : 'https://firestore.googleapis.com') + '/v1/';
 
 /* ---- Codes: RK-7F3K-92QD ---- */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I: easy to read back off paper

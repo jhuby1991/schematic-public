@@ -69,3 +69,39 @@ stamp off until it is issued again. Anyone can also type a code into
 - Each web address the tool runs on must be listed in Firebase under
   Authentication > Settings > Authorized domains (e.g. `create.rkdraw.workers.dev`).
 - `qrcode.js` is qrcode-generator by Kazuhiko Arase (MIT licence).
+
+## Usage dashboard (Rako admins)
+
+`/dashboard` (dashboard.html) shows who is signed in to the tool right now and
+what they're doing, and how the tool has been used over the last 7, 30 or 90
+days: time in the tool, sessions, drawings worked on, parts placed, prints,
+issued drawings, which features get used (and which don't), a table of people,
+and a feed of recent actions. It refreshes itself every 30 seconds.
+`/dashboard?demo` shows it with made-up sample data.
+
+- **Only signed-in Rako staff are recorded.** `usage.js` does nothing until a
+  verified @rakocontrols.com account signs in through **Sales**, and stops the
+  moment they sign out. Nothing is saved up while signed out, and nothing on
+  the drawing from before signing in is counted. The Sales panel tells staff
+  their use is recorded while they're signed in.
+- What's recorded: what they're doing now (drawing cables, printing, idle, in
+  another tab...), the drawing's name, version and tab, parts added and
+  removed by type, cables drawn, tabs, opening/printing/saving/issuing, and
+  how often each feature is used. Active time counts only while the tool is
+  in front and has been clicked, typed or scrolled in the last minute.
+- Records live in the same Firestore database as the register, in
+  `toolPresence` (one per person, what they're doing now), `toolUsage`
+  (batches of actions, for the feed) and `toolUsageDaily` (each person's
+  totals per day). Writes are batched: roughly 1-2 a minute per person while
+  they're working, plus a heartbeat every few minutes while the tool is open.
+- **Who can read it** is set in two places that must match: `USAGE_ADMINS` in
+  `usage-shared.js` (for the page's messages and the Sales panel link) and
+  `isUsageAdmin()` in `firestore.rules` (the real gate). Staff can only write
+  their own records and nobody can edit or delete them from the tool.
+- After merging, **publish `firestore.rules`** in the Firebase console
+  (Firestore Database > Rules). Until then the tool's writes are refused (it
+  quietly stops recording) and the dashboard says the rules aren't published.
+- Records are kept until deleted. Each `toolUsage` batch carries an
+  `expireAt` a year ahead: add a Firestore TTL policy on `toolUsage`, field
+  `expireAt`, in the console to have the feed's detail cleared after a year
+  (the daily totals in `toolUsageDaily` stay).
