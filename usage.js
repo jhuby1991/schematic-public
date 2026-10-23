@@ -15,13 +15,13 @@
 // heartbeat while the tool is open, so a day's use is a few hundred small
 // writes per person.
 
-import { FIREBASE, DOCS, API, toFields, summariseDrawing } from './register.js?v=1.54';
-import { onStaffChange, onBeforeSignOut, staffName } from './sales.js?v=1.54';
-import { getSchematicData } from './canvas.js?v=1.54';
-import { displayName } from './drawings.js?v=1.54';
-import { USAGE_EVENTS, USAGE_DAILY, PRESENCE, NOT_PARTS, dayKey, fieldSeg, describeAction } from './usage-shared.js?v=1.54';
+import { FIREBASE, DOCS, API, toFields, summariseDrawing } from './register.js?v=1.55';
+import { onStaffChange, onBeforeSignOut, staffName } from './sales.js?v=1.55';
+import { getSchematicData } from './canvas.js?v=1.55';
+import { displayName } from './drawings.js?v=1.55';
+import { USAGE_EVENTS, USAGE_DAILY, PRESENCE, NOT_PARTS, dayKey, fieldSeg, describeAction } from './usage-shared.js?v=1.55';
 
-const TOOL_VERSION = 'v1.54';
+const TOOL_VERSION = 'v1.55';
 const TICK_MS = 15 * 1000;             // how often to look at what's going on
 const FLUSH_MS = 2 * 60 * 1000;        // actions are sent at most this often
 const PRESENCE_MIN_MS = 60 * 1000;     // "what they're doing" is updated at most this often

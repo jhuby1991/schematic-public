@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.54';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.55';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.54';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.54';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.54';
-import { showToast, showConfirm } from './utils.js?v=1.54';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.54';
+import { doAutosave } from './storage.js?v=1.55';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.55';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.55';
+import { showToast, showConfirm } from './utils.js?v=1.55';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.55';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -1838,31 +1838,8 @@ export function setupCanvas(app) {
                 cycleTermStarLabel(obj);
             });
         }
-        // Add permanent label for DINCONNECT and WKCONNECT
-        if (type === 'DINCONNECT' || type === 'WKCONNECT') {
-            const nameLabel = document.createElement('div');
-            nameLabel.textContent = type === 'DINCONNECT' ? 'DIN-CONNECT' : 'WK-CONNECT';
-            nameLabel.style.position = 'absolute';
-            nameLabel.style.left = '50%';
-            nameLabel.style.top = '0px';
-            nameLabel.style.transform = 'translate(-50%, -100%)';
-            nameLabel.style.fontSize = '7px';
-            nameLabel.style.fontFamily = 'Avenir, Arial, sans-serif';
-            nameLabel.style.fontWeight = 'normal';
-            nameLabel.style.color = '#666';
-            nameLabel.style.background = 'none';
-            nameLabel.style.borderRadius = '';
-            nameLabel.style.padding = '0';
-            nameLabel.style.pointerEvents = 'none';
-            nameLabel.style.userSelect = 'none';
-            nameLabel.style.zIndex = '40';
-            nameLabel.style.whiteSpace = 'nowrap';
-            nameLabel.style.width = '';
-            nameLabel.style.maxWidth = '';
-            nameLabel.style.textAlign = 'center';
-            nameLabel.style.border = '';
-            obj.appendChild(nameLabel);
-        }
+        // DINCONNECT / WKCONNECT name labels come from the CSS ::before rule in
+        // custom.html; a second label here used to sit on top of it.
         // Fix PNG alignment for DINCONNECT and WKCONNECT
         if ((type === 'DINCONNECT' || type === 'WKCONNECT') && imgSrc) {
             const img = obj.querySelector('img');
@@ -2978,7 +2955,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.54');
+            const mod = await import('./connections.js?v=1.55');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }

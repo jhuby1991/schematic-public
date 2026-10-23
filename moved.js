@@ -9,11 +9,11 @@
 // opens the new one and hands the drawings across (window.postMessage, checked
 // at both ends against the other address). Nobody's work is left behind.
 
-import { CHECK_ORIGIN } from './register.js?v=1.54';
+import { CHECK_ORIGIN } from './register.js?v=1.55';
 import {
     hasDrawings, listDrawings, readDrawing, writeDrawing, findDrawingByContent,
     contentKey, isBlank, newDrawingId, migrateLegacy, displayName
-} from './drawings.js?v=1.54';
+} from './drawings.js?v=1.55';
 
 export const OLD_ORIGIN = 'https://jhuby1991.github.io';
 const OLD_PATH_PREFIX = '/schematic-public';
