@@ -1,20 +1,21 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.55';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.56';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.55';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.55';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.55';
-import { showToast, showConfirm } from './utils.js?v=1.55';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.55';
+import { doAutosave } from './storage.js?v=1.56';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.56';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.56';
+import { showToast, showConfirm } from './utils.js?v=1.56';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.56';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
-    'DIN-DLI': 'DINDLI'
+    'DIN-DLI': 'DINDLI',
+    'DIN-STAR-4': 'DINSTAR4'
 };
 
 function normalizeType(type) {
@@ -1229,6 +1230,10 @@ export function setupCanvas(app) {
                 width = 10 * GRID_SIZE; height = 7 * GRID_SIZE; break;
             case 'DINPSU100':
                 width = 5 * GRID_SIZE; height = 6 * GRID_SIZE; break;
+            case 'DINSTAR4':
+                // Same height as the other DIN modules; the artwork is
+                // roughly square, so it is as wide as it is tall.
+                width = 7 * GRID_SIZE; height = 7 * GRID_SIZE; break;
             case 'DINCONNECT':
             case 'WKCONNECT':
                 width = 4 * GRID_SIZE; height = 2 * GRID_SIZE; break;
@@ -1718,6 +1723,7 @@ export function setupCanvas(app) {
             img.style.height = '100%';
             obj.appendChild(img);
             trackImageSetup(img);
+            if (type === 'DINSTAR4') obj._termStarState = dinStarTermState(item && item.termStarState);
             img.onload = function() {
                 const size = getTypeGridSize(type, img);
                 obj.style.width = size.width + 'px';
@@ -1753,6 +1759,10 @@ export function setupCanvas(app) {
                     const termStar = (item && item.termStarState) ? item.termStarState : 'blank';
                     addTermStarLabel(obj, termStar);
                 }
+                // DIN-STAR-4: its own TERM label on each side (TERM 1 / TERM 2)
+                if (type === 'DINSTAR4') {
+                    addDinStarTermLabels(obj, (item && item.termStarState) || obj._termStarState);
+                }
                 doAutosave(app);
             };
         } else {
@@ -1765,7 +1775,7 @@ export function setupCanvas(app) {
         }
         // --- Add rotate handle for allowed types ---
         const excludedTypes = [
-            'TextBox', 'Label', 'RAK8', 'RAKSTAR', 'RAKLink', 'DIN4C', 'DIN4T', 'DIN8S', 'DINLINK', 'DINPSU100',
+            'TextBox', 'Label', 'RAK8', 'RAKSTAR', 'RAKLink', 'DIN4C', 'DIN4T', 'DIN8S', 'DINLINK', 'DINPSU100', 'DINSTAR4',
             'DINCONNECT', 'WKCONNECT', 'DINDLI', 'KeypadWCM', 'KeypadEOS', 'KeypadMOD', 'KeypadMD', 'RCM', 'RK-EOS', 'RK-MOD', 'HUB'
         ];
         // Remove sensor types from excludedTypes so they get rotate handle
@@ -1836,6 +1846,15 @@ export function setupCanvas(app) {
             obj.addEventListener('dblclick', (e) => {
                 e.stopPropagation();
                 cycleTermStarLabel(obj);
+            });
+        }
+        // DIN-STAR-4: double-click its left half for TERM 1 (Loop In), its
+        // right half for TERM 2 (Loop Out). Each is just TERM or no term.
+        if (type === 'DINSTAR4') {
+            obj.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                const r = obj.getBoundingClientRect();
+                toggleDinStarTerm(obj, (e.clientX - r.left) < r.width / 2 ? 'left' : 'right');
             });
         }
         // DINCONNECT / WKCONNECT name labels come from the CSS ::before rule in
@@ -1917,6 +1936,57 @@ export function setupCanvas(app) {
         labelDiv.style.zIndex = '30';
         obj.appendChild(labelDiv);
         obj._termStarState = initialState;
+    }
+
+    /* DIN-STAR-4 has two termination switches - TERM 1 by Loop In on the
+       left, TERM 2 by Loop Out on the right - each either TERM or not (no
+       STAR). Its termStarState is { left, right }, each 'TERM' or 'blank'.
+       A fresh object is made on every change rather than editing it in
+       place, since a restored item can share its object with saved data. */
+    function dinStarTermState(saved) {
+        const s = (saved && typeof saved === 'object') ? saved : {};
+        return {
+            left: s.left === 'TERM' ? 'TERM' : 'blank',
+            right: s.right === 'TERM' ? 'TERM' : 'blank'
+        };
+    }
+
+    function addDinStarTermLabels(obj, saved) {
+        obj.querySelectorAll('.keypad-term-star-label').forEach(el => el.remove());
+        const state = dinStarTermState(saved);
+        ['left', 'right'].forEach(side => {
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'keypad-term-star-label dinstar-term-label';
+            labelDiv.dataset.side = side;
+            labelDiv.textContent = state[side] === 'TERM' ? 'TERM' : '';
+            // Centred on that side's TERM switch box in the artwork, and
+            // smaller than a keypad's so it doesn't cover the Loop ports.
+            labelDiv.style.position = 'absolute';
+            labelDiv.style.top = '68.6%';
+            labelDiv.style.bottom = 'auto';
+            labelDiv.style.left = side === 'left' ? '13.8%' : '85.4%';
+            labelDiv.style.right = 'auto';
+            labelDiv.style.transform = 'translate(-50%, -50%)';
+            labelDiv.style.fontSize = '6px';
+            labelDiv.style.lineHeight = '1';
+            labelDiv.style.padding = '1px 2px';
+            labelDiv.style.zIndex = '30';
+            obj.appendChild(labelDiv);
+        });
+        obj._termStarState = state;
+    }
+
+    function toggleDinStarTerm(obj, side) {
+        const state = dinStarTermState(obj._termStarState);
+        const next = { ...state, [side]: state[side] === 'TERM' ? 'blank' : 'TERM' };
+        const labelDiv = obj.querySelector(`.dinstar-term-label[data-side="${side}"]`);
+        if (labelDiv) {
+            labelDiv.textContent = next[side] === 'TERM' ? 'TERM' : '';
+            obj._termStarState = next;
+        } else {
+            addDinStarTermLabels(obj, next);
+        }
+        if (typeof saveState === 'function') saveState();
     }
 
     function cycleTermStarLabel(obj) {
@@ -2955,7 +3025,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.55');
+            const mod = await import('./connections.js?v=1.56');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }

@@ -1,8 +1,8 @@
 // ui.js
 // Toolbar, help, onboarding, empty state and palette chrome.
 
-import { showNotification, showActionBar } from './utils.js?v=1.55';
-import { hasDrawings } from './drawings.js?v=1.55';
+import { showNotification, showActionBar } from './utils.js?v=1.56';
+import { hasDrawings } from './drawings.js?v=1.56';
 
 const WELCOME_KEY = 'rakoSchematicWelcomeSeen';
 const TOUR_KEY = 'rakoSchematicTourSeen';
@@ -45,6 +45,7 @@ const HELP_HTML = `
     <li><b>Move a text box</b>: click it once to select it, then drag it from anywhere. Drag the handle on its right edge to make it wider or narrower.</li>
     <li><b>Edit its text</b>: double-click it, or select it and press <b>Enter</b>. Highlight words and use the buttons on the left to make them bold, italic, coloured and so on. With the box selected but not being edited, those buttons change all of its text. <b>Esc</b> or a click elsewhere finishes.</li>
     <li>Double-click a <b>TERM</b> or <b>STAR</b> label to cycle through its settings.</li>
+    <li>On a <b>DIN-STAR-4</b>, double-click its left side to switch <b>TERM 1</b> (Loop In) on or off, and its right side for <b>TERM 2</b> (Loop Out).</li>
     <li>Double-click a RAK to name each of its circuits. <b>Clear all</b> empties every name at once; then <b>Save Labels</b> to show none.</li>
   </ul>
 

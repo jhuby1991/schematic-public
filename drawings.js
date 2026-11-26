@@ -41,7 +41,8 @@ function isEmptyValue(key, v) {
     if (v === null || v === undefined || v === '') return true;
     if (Array.isArray(v)) return !v.length || (key === 'labels' && DEFAULT_LABELS.includes(JSON.stringify(v)));
     if (key === 'rotation') return !Number(v);
-    if (key === 'termStarState') return v === 'blank';
+    // A DIN-STAR-4 keeps one per side ({ left, right }); both off is the default.
+    if (key === 'termStarState') return v === 'blank' || (typeof v === 'object' && Object.values(v).every(s => s === 'blank'));
     return false;
 }
 function canonical(obj, { skip = [] } = {}) {
