@@ -1313,7 +1313,8 @@
         }
         .canvas-item[data-type="DIN4C"],
         .canvas-item[data-type="DIN4T"],
-        .canvas-item[data-type="DIN8S"] {
+        .canvas-item[data-type="DIN8S"],
+        .canvas-item[data-type="DINSTAR4"] {
             background: transparent !important;
         }
 
@@ -2636,7 +2637,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.55</span>
+                <span class="app-version" title="Tool version">v1.56</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -2773,6 +2774,9 @@
                         </div>
                         <div class="palette-item" draggable="true" data-type="DINDLI" data-img="https://s.myrako.com/Schematic/Configure/din/dli.png">
                             <img src="https://s.myrako.com/Schematic/Configure/din/dli.png" alt="DIN-DLI" onerror="this.src='https://placehold.co/30x30/ccc/999?text=DIN-DLI'">DIN-DLI
+                        </div>
+                        <div class="palette-item" draggable="true" data-type="DINSTAR4" data-img="din/dstar4.png">
+                            <img src="din/dstar4.png" alt="DIN-STAR-4" onerror="this.src='https://placehold.co/30x30/ccc/999?text=STAR4'">DIN-STAR-4
                         </div>
                     </div>
                 </div>
@@ -3038,6 +3042,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.55"></script>
+    <script type="module" src="main.js?v=1.56"></script>
 </body>
 </html>
