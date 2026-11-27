@@ -8,12 +8,12 @@
 // dashboard.html?demo shows made-up sample data, to see the layout before
 // any real usage has been recorded.
 
-import { FIREBASE, EMULATOR, DOCS, API, STAFF_DOMAIN, fromFields } from './register.js?v=1.56';
+import { FIREBASE, EMULATOR, DOCS, API, STAFF_DOMAIN, fromFields } from './register.js?v=1.57';
 import {
     USAGE_ADMINS, USAGE_EVENTS, USAGE_DAILY, PRESENCE, PRESENCE_GRACE_MS, FEATURES, NOT_PARTS, EDITS,
     dayKey, describeAction, formatDuration
-} from './usage-shared.js?v=1.56';
-import { redirectIfOldAddress } from './moved.js?v=1.56';
+} from './usage-shared.js?v=1.57';
+import { redirectIfOldAddress } from './moved.js?v=1.57';
 
 redirectIfOldAddress(); // the old GitHub Pages address: on to the new one
 

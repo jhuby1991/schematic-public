@@ -2,17 +2,17 @@
 // All JavaScript logic from custom.html, excluding dead cloud storage functions and their calls, should be placed here.
 // ... (Insert all relevant JS code from custom.html here) ... 
 
-import { setupUI } from './ui.js?v=1.56';
-import { setupCanvas } from './canvas.js?v=1.56';
-import { setupPalette } from './palette.js?v=1.56';
-import { setupStorage, offerAutosaveRecovery } from './storage.js?v=1.56';
-import { showNotification, showToast } from './utils.js?v=1.56';
-import { setupZoomPan } from './zoom.js?v=1.56';
-import { setupStatusBar } from './statusbar.js?v=1.56';
-import { setupQuickAdd } from './quickadd.js?v=1.56';
-import { setupSales } from './sales.js?v=1.56';
-import { setupUsage } from './usage.js?v=1.56';
-import { handleOldAddress, receiveMovedDrawings } from './moved.js?v=1.56';
+import { setupUI } from './ui.js?v=1.57';
+import { setupCanvas } from './canvas.js?v=1.57';
+import { setupPalette } from './palette.js?v=1.57';
+import { setupStorage, offerAutosaveRecovery } from './storage.js?v=1.57';
+import { showNotification, showToast } from './utils.js?v=1.57';
+import { setupZoomPan } from './zoom.js?v=1.57';
+import { setupStatusBar } from './statusbar.js?v=1.57';
+import { setupQuickAdd } from './quickadd.js?v=1.57';
+import { setupSales } from './sales.js?v=1.57';
+import { setupUsage } from './usage.js?v=1.57';
+import { handleOldAddress, receiveMovedDrawings } from './moved.js?v=1.57';
 
 const app = {
     // Add shared state or methods here if needed

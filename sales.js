@@ -9,20 +9,20 @@
 // it was issued. Change the drawing afterwards and the stamp comes off until
 // it's issued again.
 
-import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.56';
-import { contentKey, isBlank, displayName } from './drawings.js?v=1.56';
-import { openDrawingData } from './storage.js?v=1.56';
-import { showToast, showConfirm, showActionBar } from './utils.js?v=1.56';
+import { getSchematicData, getDrawingIssue, setDrawingIssue } from './canvas.js?v=1.57';
+import { contentKey, isBlank, displayName } from './drawings.js?v=1.57';
+import { openDrawingData } from './storage.js?v=1.57';
+import { showToast, showConfirm, showActionBar } from './utils.js?v=1.57';
 import {
     FIREBASE, STAFF_DOMAIN, EMULATOR, newIssueCode, normaliseCode, checkUrl, checkUrlShort,
     quickHash, sha256, createIssued, withdrawIssued, lookupIssued, summariseDrawing
-} from './register.js?v=1.56';
-import qrcode from './qrcode.js?v=1.56';
-import { USAGE_ADMINS } from './usage-shared.js?v=1.56';
+} from './register.js?v=1.57';
+import qrcode from './qrcode.js?v=1.57';
+import { USAGE_ADMINS } from './usage-shared.js?v=1.57';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const SIGNED_IN_HINT = 'rakoStaffSignedIn'; // load sign-in straight away next time, so the button is right from the start
-const TOOL_VERSION = 'v1.56';
+const TOOL_VERSION = 'v1.57';
 
 let fb = null;          // the Firebase Auth module and instance, once loaded
 let loading = null;

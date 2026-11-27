@@ -1605,6 +1605,10 @@
         #drawing-canvas-wrapper.hand-mode .canvas-item:hover:not(.selected) {
             outline: none !important;
         }
+        /* Hidden by typing "grid" (canvas.js) */
+        #drawing-canvas.grid-hidden #grid-svg {
+            display: none;
+        }
         @media print {
             #grid-svg {
                 display: none !important;
@@ -2637,7 +2641,7 @@
         <div id="left-column">
             <div id="drawing-toolbar">
                 <button id="addTextBtn" class="btn btn-outline-secondary" title="Add Text Box"><i class="bi bi-fonts"></i> Label</button>
-                <span class="app-version" title="Tool version">v1.56</span>
+                <span class="app-version" title="Tool version">v1.57</span>
                 <!-- Remove the Box tool button/icon -->
             </div>
 
@@ -3042,6 +3046,6 @@
     <img id="printWatermark" src="https://s.myrako.com/Schematic/Configure/background.png" alt="" aria-hidden="true">
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="main.js?v=1.56"></script>
+    <script type="module" src="main.js?v=1.57"></script>
 </body>
 </html>
