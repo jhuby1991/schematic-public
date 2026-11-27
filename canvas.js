@@ -1,16 +1,16 @@
 // canvas.js
 // Handles drawing, moving, and editing items on the canvas.
 
-import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.56';
+import { setupConnections, startConnection, finishConnection, renderConnections, clearLineSelection, selectLine, pickLine, findLineNear, isDrawableLine, getSelectedLineIndices, getConnections, addConnection, updateConnectionLineByIndex, deleteSelectedLine } from './connections.js?v=1.57';
 // connections.js is used through these static imports. The handful of
 // dynamic import() calls that used to sit in event handlers resolved a
 // moment later and out of order - a click that cleared the wire selection
 // could land after a selection box had already selected wires.
-import { doAutosave } from './storage.js?v=1.56';
-import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.56';
-import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.56';
-import { showToast, showConfirm } from './utils.js?v=1.56';
-import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.56';
+import { doAutosave } from './storage.js?v=1.57';
+import { initTextTool, createTextBoxOnCanvas } from './text.js?v=1.57';
+import { initIconTool, createIconOnCanvas, buildIconPalette } from './icons.js?v=1.57';
+import { showToast, showConfirm } from './utils.js?v=1.57';
+import { atPrintScale, atPrintScaleSync } from './zoom.js?v=1.57';
 
 // --- Type Normalization ---
 const TYPE_NORMALIZATION_MAP = {
@@ -3025,7 +3025,7 @@ export function setupCanvas(app) {
         }
         // Restore lines
         if (svgOverlay) {
-            const mod = await import('./connections.js?v=1.56');
+            const mod = await import('./connections.js?v=1.57');
             mod.setConnections(pageData.connections || []);
             mod.renderConnections();
         }
@@ -3501,6 +3501,93 @@ export function setupCanvas(app) {
     window.addEventListener('resize', renderGrid);
     window._renderGrid = renderGrid;
     renderGrid();
+
+    // --- Secret: type "grid" to hide or show the grid ---
+    // Deliberately left out of the help and the toolbar. Works wherever a
+    // shortcut would (not while typing in a box, or with a dialog open)
+    // and is remembered in this browser. R and D are cable colour
+    // shortcuts (red, purple), so once a "g" is typed the next letters of
+    // "grid" are held back instead of acted on. If the word isn't
+    // finished - a different key, a click, or a pause - the held keys are
+    // played through as normal, so "g" then "r" still picks red.
+    const GRID_HIDDEN_KEY = 'rakoGridHidden';
+    const GRID_WORD = 'grid';
+    const GRID_WORD_PAUSE = 1200; // ms allowed between letters
+    let gridWordTyped = '';   // how much of the word has been typed so far
+    let gridWordHeld = [];    // the keys held back meanwhile
+    let gridWordTimer = null;
+    let replayingGridWord = false;
+
+    function setGridHidden(hidden) {
+        drawingCanvas.classList.toggle('grid-hidden', hidden);
+        try {
+            if (hidden) localStorage.setItem(GRID_HIDDEN_KEY, '1');
+            else localStorage.removeItem(GRID_HIDDEN_KEY);
+        } catch (e) {}
+        if (app.showNotification) {
+            app.showNotification(hidden ? 'Grid hidden. Type "grid" again to bring it back.' : 'Grid shown');
+        }
+    }
+    try {
+        if (localStorage.getItem(GRID_HIDDEN_KEY) === '1') drawingCanvas.classList.add('grid-hidden');
+    } catch (e) {}
+
+    function endGridWord(replay) {
+        clearTimeout(gridWordTimer);
+        const held = gridWordHeld;
+        gridWordTyped = '';
+        gridWordHeld = [];
+        if (!replay || !held.length) return;
+        replayingGridWord = true;
+        try {
+            held.forEach(({ target, init }) => {
+                const to = target && target.isConnected ? target : document;
+                to.dispatchEvent(new KeyboardEvent('keydown', init));
+            });
+        } finally {
+            replayingGridWord = false;
+        }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (replayingGridWord) return;
+        // Shift on its own (typing GRID in capitals) isn't a break in the word
+        if (['Shift', 'CapsLock'].includes(e.key)) return;
+        const active = document.activeElement;
+        const typing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
+        if (typing || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || document.querySelector('.modal.show')) {
+            endGridWord(true);
+            return;
+        }
+        const k = e.key.length === 1 ? e.key.toLowerCase() : '';
+        if (gridWordTyped && !e.repeat && k === GRID_WORD[gridWordTyped.length]) {
+            e.preventDefault();
+            e.stopImmediatePropagation(); // not a shortcut (yet)
+            gridWordTyped += k;
+            if (gridWordTyped === GRID_WORD) {
+                endGridWord(false); // the held letters were the word: drop them
+                setGridHidden(!drawingCanvas.classList.contains('grid-hidden'));
+                return;
+            }
+            gridWordHeld.push({
+                target: e.target,
+                init: { key: e.key, code: e.code, location: e.location, shiftKey: e.shiftKey, bubbles: true, cancelable: true, composed: true }
+            });
+            clearTimeout(gridWordTimer);
+            gridWordTimer = setTimeout(() => endGridWord(true), GRID_WORD_PAUSE);
+            return;
+        }
+        // Not the next letter: anything held back happens first, in order,
+        // then this key goes on as usual.
+        endGridWord(true);
+        if (k === GRID_WORD[0] && !e.repeat) {
+            gridWordTyped = k;
+            gridWordTimer = setTimeout(() => endGridWord(true), GRID_WORD_PAUSE);
+        }
+    }, true);
+    // A click mid-word: play the held keys first, so a cable drawn straight
+    // after "g", "r" comes out red as it would have before.
+    window.addEventListener('pointerdown', () => endGridWord(true), true);
 
     // Mouse position in canvas coordinates - the units items are positioned,
     // saved and printed in - whatever the current zoom and scroll position.
